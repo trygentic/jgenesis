@@ -418,7 +418,11 @@ impl GraphicsSupportUnit {
 
     fn read_r(&self, address: u32) -> u8 {
         let idx = (address & 0x1F) >> 1;
-        if !address.bit(0) { self.r[idx as usize].lsb() } else { self.r[idx as usize].msb() }
+        if !address.bit(0) {
+            self.r[idx as usize].lsb()
+        } else {
+            self.r[idx as usize].msb()
+        }
     }
 
     fn read_sfr_low(&self) -> u8 {

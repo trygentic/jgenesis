@@ -112,7 +112,8 @@ impl Sa1 {
 
         if self.registers.dma_state != DmaState::Idle {
             for _ in 0..sa1_cycles {
-                self.registers.tick_dma(&self.mmc, &self.rom, &mut self.iram, &mut self.bwram);
+                self.registers
+                    .tick_dma(&self.mmc, &self.rom, &mut self.iram, &mut self.bwram);
             }
         }
 

@@ -13,14 +13,20 @@ fn fetch_operand<B: BusInterface>(cpu: &mut Spc700, bus: &mut B) -> u8 {
     let operand = bus.read(cpu.registers.pc);
     cpu.registers.pc = cpu.registers.pc.wrapping_add(1);
 
-    log::trace!("Fetched operand from PC={:04X}: {operand:02X}", cpu.registers.pc.wrapping_sub(1));
+    log::trace!(
+        "Fetched operand from PC={:04X}: {operand:02X}",
+        cpu.registers.pc.wrapping_sub(1)
+    );
 
     operand
 }
 
 macro_rules! invalid_cycle {
     ($cpu:expr) => {
-        panic!("Invalid cycle for opcode {:02X}: {}", $cpu.state.opcode, $cpu.state.cycle)
+        panic!(
+            "Invalid cycle for opcode {:02X}: {}",
+            $cpu.state.opcode, $cpu.state.cycle
+        )
     };
 }
 

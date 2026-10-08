@@ -14,10 +14,17 @@ pub(super) fn add(
     // ADD/ADC: Add / Add with carry
     // ALT1 controls ADD vs. ADC
     // ALT2 controls register operand vs. immediate operand
-    let operand =
-        if gsu.alt2 { u16::from(opcode & 0x0F) } else { read_register(gsu, opcode & 0x0F) };
+    let operand = if gsu.alt2 {
+        u16::from(opcode & 0x0F)
+    } else {
+        read_register(gsu, opcode & 0x0F)
+    };
 
-    let existing_carry = if gsu.alt1 { u16::from(gsu.carry_flag) } else { 0 };
+    let existing_carry = if gsu.alt1 {
+        u16::from(gsu.carry_flag)
+    } else {
+        0
+    };
 
     let source = read_register(gsu, gsu.sreg);
     let (partial_sum, carry1) = source.overflowing_add(operand);
@@ -125,8 +132,11 @@ pub(super) fn mult(
     // MULT/UMULT: Signed multiplication / Unsigned multiplication
     // ALT1 controls MULT vs. UMULT
     // ALT2 controls register operand vs. immediate operand
-    let operand =
-        if gsu.alt2 { u16::from(opcode & 0x0F) } else { read_register(gsu, opcode & 0x0F) & 0xFF };
+    let operand = if gsu.alt2 {
+        u16::from(opcode & 0x0F)
+    } else {
+        read_register(gsu, opcode & 0x0F) & 0xFF
+    };
 
     let source = read_register(gsu, gsu.sreg) & 0xFF;
 
@@ -202,11 +212,18 @@ pub(super) fn and(
     // AND/BIC: And / And with complement
     // ALT1 controls AND vs. BIC
     // ALT2 controls register operand vs. immediate operand
-    let operand =
-        if gsu.alt2 { u16::from(opcode & 0x0F) } else { read_register(gsu, opcode & 0x0F) };
+    let operand = if gsu.alt2 {
+        u16::from(opcode & 0x0F)
+    } else {
+        read_register(gsu, opcode & 0x0F)
+    };
 
     let source = read_register(gsu, gsu.sreg);
-    let result = if gsu.alt1 { source & !operand } else { source & operand };
+    let result = if gsu.alt1 {
+        source & !operand
+    } else {
+        source & operand
+    };
 
     let cycles = write_register(gsu, gsu.dreg, result, rom, ram);
 
@@ -227,11 +244,18 @@ pub(super) fn or(
     // OR/XOR: Or / Exclusive or
     // ALT1 controls OR vs. XOR
     // ALT2 controls register operand vs. immediate operand
-    let operand =
-        if gsu.alt2 { u16::from(opcode & 0x0F) } else { read_register(gsu, opcode & 0x0F) };
+    let operand = if gsu.alt2 {
+        u16::from(opcode & 0x0F)
+    } else {
+        read_register(gsu, opcode & 0x0F)
+    };
 
     let source = read_register(gsu, gsu.sreg);
-    let result = if gsu.alt1 { source ^ operand } else { source | operand };
+    let result = if gsu.alt1 {
+        source ^ operand
+    } else {
+        source | operand
+    };
 
     let cycles = write_register(gsu, gsu.dreg, result, rom, ram);
 
@@ -271,8 +295,11 @@ pub(super) fn asr(
     let source = read_register(gsu, gsu.sreg);
 
     // DIV2 is equivalent to ASR unless Sreg == -1, in which case DIV2 produces 0 and ASR produces -1
-    let shifted =
-        if gsu.alt1 && source == u16::MAX { 0 } else { (source >> 1) | (source & 0x8000) };
+    let shifted = if gsu.alt1 && source == u16::MAX {
+        0
+    } else {
+        (source >> 1) | (source & 0x8000)
+    };
 
     let cycles = write_register(gsu, gsu.dreg, shifted, rom, ram);
 

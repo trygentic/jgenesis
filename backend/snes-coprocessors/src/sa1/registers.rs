@@ -70,7 +70,11 @@ pub enum DmaType {
 
 impl DmaType {
     fn from_bit(bit: bool) -> Self {
-        if bit { Self::CharacterConversion } else { Self::Normal }
+        if bit {
+            Self::CharacterConversion
+        } else {
+            Self::Normal
+        }
     }
 }
 
@@ -495,7 +499,10 @@ impl Sa1Registers {
         self.snes_irq_from_sa1_enabled = value.bit(7);
         self.snes_irq_from_dma_enabled = value.bit(5);
 
-        log::trace!("  SNES IRQs from SA-1 enabled: {}", self.snes_irq_from_sa1_enabled);
+        log::trace!(
+            "  SNES IRQs from SA-1 enabled: {}",
+            self.snes_irq_from_sa1_enabled
+        );
         log::trace!(
             "  SNES character conversion DMA IRQs enabled: {}",
             self.snes_irq_from_dma_enabled
@@ -519,7 +526,10 @@ impl Sa1Registers {
         self.dma_irq_enabled = value.bit(5);
         self.sa1_nmi_enabled = value.bit(4);
 
-        log::trace!("  SA-1 IRQs from SNES enabled: {}", self.sa1_irq_from_snes_enabled);
+        log::trace!(
+            "  SA-1 IRQs from SNES enabled: {}",
+            self.sa1_irq_from_snes_enabled
+        );
         log::trace!("  SA-1 timer IRQs enabled: {}", self.timer_irq_enabled);
         log::trace!("  SA-1 DMA IRQs enabled: {}", self.dma_irq_enabled);
         log::trace!("  SA-1 NMIs enabled: {}", self.sa1_nmi_enabled);
@@ -617,8 +627,14 @@ impl Sa1Registers {
         self.snes_nmi_vector_source = InterruptVectorSource::from_bit(value.bit(4));
         self.message_to_snes = value & 0x0F;
 
-        log::trace!("  SNES IRQ vector source: {:?}", self.snes_irq_vector_source);
-        log::trace!("  SNES NMI vector source: {:?}", self.snes_nmi_vector_source);
+        log::trace!(
+            "  SNES IRQ vector source: {:?}",
+            self.snes_irq_vector_source
+        );
+        log::trace!(
+            "  SNES NMI vector source: {:?}",
+            self.snes_nmi_vector_source
+        );
         log::trace!("  Message to SNES: {:X}", self.message_to_snes);
     }
 
@@ -638,7 +654,10 @@ impl Sa1Registers {
         // Write protected area size is 256 * 2^N bytes
         self.bwram_write_protection_size = 1 << (8 + (value & 0x0F));
 
-        log::trace!("  BW-RAM write protection size: {:X}", self.bwram_write_protection_size);
+        log::trace!(
+            "  BW-RAM write protection size: {:X}",
+            self.bwram_write_protection_size
+        );
     }
 
     fn write_siwp(&mut self, value: u8) {
@@ -663,7 +682,10 @@ impl Sa1Registers {
 
         log::trace!("  DMA source: {:?}", self.dma_source);
         log::trace!("  DMA destination: {:?}", self.dma_destination);
-        log::trace!("  DMA character conversion type: {:?}", self.character_conversion_type);
+        log::trace!(
+            "  DMA character conversion type: {:?}",
+            self.character_conversion_type
+        );
         log::trace!("  DMA type: {:?}", self.dma_type);
         log::trace!("  DMA enabled: {}", self.dma_enabled);
     }
@@ -677,8 +699,14 @@ impl Sa1Registers {
             self.dma_state = DmaState::Idle;
         }
 
-        log::trace!("  Character conversion DMA color depth bits: {:?}", self.ccdma_color_depth);
-        log::trace!("  Virtual VRAM width in tiles: {}", self.virtual_vram_width_tiles);
+        log::trace!(
+            "  Character conversion DMA color depth bits: {:?}",
+            self.ccdma_color_depth
+        );
+        log::trace!(
+            "  Virtual VRAM width in tiles: {}",
+            self.virtual_vram_width_tiles
+        );
     }
 
     fn write_sda_low(&mut self, value: u8) {
@@ -702,13 +730,19 @@ impl Sa1Registers {
     fn write_dda_low(&mut self, value: u8) {
         self.dma_destination_address.set_low_byte(value);
 
-        log::trace!("  DMA destination address: {:06X}", self.dma_destination_address);
+        log::trace!(
+            "  DMA destination address: {:06X}",
+            self.dma_destination_address
+        );
     }
 
     fn write_dda_mid(&mut self, value: u8) {
         self.dma_destination_address.set_mid_byte(value);
 
-        log::trace!("  DMA destination address: {:06X}", self.dma_destination_address);
+        log::trace!(
+            "  DMA destination address: {:06X}",
+            self.dma_destination_address
+        );
 
         match (self.dma_enabled, self.dma_type, self.dma_destination) {
             (true, DmaType::Normal, DmaDestinationDevice::Iram) => {
@@ -718,9 +752,10 @@ impl Sa1Registers {
             (true, DmaType::CharacterConversion, _) => {
                 log::trace!("  Starting character conversion DMA");
                 self.dma_state = match self.character_conversion_type {
-                    CharacterConversionType::Two => {
-                        DmaState::CharacterConversion2 { buffer_idx: 0, rows_copied: 0 }
-                    }
+                    CharacterConversionType::Two => DmaState::CharacterConversion2 {
+                        buffer_idx: 0,
+                        rows_copied: 0,
+                    },
                     CharacterConversionType::One => DmaState::CharacterConversion1Initial {
                         cycles_remaining: self.ccdma_color_depth.tile_size() as u8,
                     },
@@ -733,7 +768,10 @@ impl Sa1Registers {
     fn write_dda_high(&mut self, value: u8) {
         self.dma_destination_address.set_high_byte(value);
 
-        log::trace!("  DMA destination address: {:06X}", self.dma_destination_address);
+        log::trace!(
+            "  DMA destination address: {:06X}",
+            self.dma_destination_address
+        );
 
         if self.dma_enabled
             && self.dma_type == DmaType::Normal
@@ -765,7 +803,11 @@ impl Sa1Registers {
 
         if idx & 0x7 == 0x7 {
             // Perform character conversion any time register 7 or 15 is written
-            if let DmaState::CharacterConversion2 { buffer_idx, rows_copied } = self.dma_state {
+            if let DmaState::CharacterConversion2 {
+                buffer_idx,
+                rows_copied,
+            } = self.dma_state
+            {
                 self.character_conversion_2(idx & 0x8, buffer_idx, rows_copied, iram);
             }
         }
@@ -822,11 +864,13 @@ impl Sa1Registers {
 
         if self.varlen_bits_remaining < 16 {
             // Read next word
-            let word = mmc.map_rom_address(self.varlen_bit_start_address).map_or(0, |rom_addr| {
-                let lsb = rom.get(rom_addr as usize).copied().unwrap_or(0);
-                let msb = rom.get((rom_addr + 1) as usize).copied().unwrap_or(0);
-                u16::from_le_bytes([lsb, msb])
-            });
+            let word = mmc
+                .map_rom_address(self.varlen_bit_start_address)
+                .map_or(0, |rom_addr| {
+                    let lsb = rom.get(rom_addr as usize).copied().unwrap_or(0);
+                    let msb = rom.get((rom_addr + 1) as usize).copied().unwrap_or(0);
+                    u16::from_le_bytes([lsb, msb])
+                });
             let word: u32 = word.into();
 
             self.varlen_bit_data |= word << self.varlen_bits_remaining;
@@ -978,8 +1022,10 @@ impl Sa1Registers {
     }
 
     pub fn cpu_halted(&self) -> bool {
-        matches!(self.dma_state, DmaState::NormalCopying | DmaState::NormalWaitCycle)
-            && (self.dma_priority == DmaPriority::Dma || self.dma_source == DmaSourceDevice::Rom)
+        matches!(
+            self.dma_state,
+            DmaState::NormalCopying | DmaState::NormalWaitCycle
+        ) && (self.dma_priority == DmaPriority::Dma || self.dma_source == DmaSourceDevice::Rom)
     }
 }
 
@@ -992,7 +1038,11 @@ fn multiply(a: u16, b: u16) -> i64 {
 fn divide(a: u16, b: u16) -> (i16, u16) {
     if b == 0 {
         // Divide by zero
-        return if a.sign_bit() { (1, (!a).wrapping_add(1)) } else { (-1, a) };
+        return if a.sign_bit() {
+            (1, (!a).wrapping_add(1))
+        } else {
+            (-1, a)
+        };
     }
 
     // Signed dividend, unsigned divisor

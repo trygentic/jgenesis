@@ -36,6 +36,11 @@ fn poll_interrupt_lines<B: BusInterface>(cpu: &mut Wdc65816, bus: &mut B) {
     cpu.state.last_irq = irq;
 }
 
+// lttprs: entry point for Wdc65816::poll_interrupts
+pub(super) fn poll_interrupts<B: BusInterface>(cpu: &mut Wdc65816, bus: &mut B) {
+    poll_interrupt_lines(cpu, bus);
+}
+
 fn final_cycle<B: BusInterface>(cpu: &mut Wdc65816, bus: &mut B) {
     poll_interrupt_lines(cpu, bus);
     cpu.state.cycle = 0;
@@ -47,7 +52,10 @@ fn ensure_page_1_stack(registers: &mut Registers) {
 
 macro_rules! invalid_cycle {
     ($cpu:expr) => {
-        panic!("Invalid cycle for opcode {:02X}: {}", $cpu.state.opcode, $cpu.state.cycle)
+        panic!(
+            "Invalid cycle for opcode {:02X}: {}",
+            $cpu.state.opcode, $cpu.state.cycle
+        )
     };
 }
 
@@ -162,10 +170,17 @@ use impl_read_direct_page_u16;
 fn index_direct_page(cpu: &Wdc65816, operand: u8, index: u16) -> u16 {
     if cpu.registers.emulation_mode && cpu.registers.d & 0x00FF == 0 {
         // If in emulation mode with D LSB equal to zero, indexing wraps at page boundary
-        (cpu.registers.d.wrapping_add(operand.into()).wrapping_add(index) & 0x00FF)
+        (cpu.registers
+            .d
+            .wrapping_add(operand.into())
+            .wrapping_add(index)
+            & 0x00FF)
             | (cpu.registers.d & 0xFF00)
     } else {
-        cpu.registers.d.wrapping_add(operand.into()).wrapping_add(index)
+        cpu.registers
+            .d
+            .wrapping_add(operand.into())
+            .wrapping_add(index)
     }
 }
 
@@ -471,7 +486,11 @@ macro_rules! impl_read_direct_page_indirect_indexed_u16 {
                     cpu.state.t1 = bus.read(address.into());
                 }
                 4 => {
-                    let address = cpu.registers.d.wrapping_add(cpu.state.t0.into()).wrapping_add(1);
+                    let address = cpu
+                        .registers
+                        .d
+                        .wrapping_add(cpu.state.t0.into())
+                        .wrapping_add(1);
                     cpu.state.t2 = bus.read(address.into());
                     check_absolute_index(
                         cpu,

@@ -25,7 +25,10 @@ impl<T> SharedVarReceiver<T> {
     #[allow(clippy::missing_panics_doc)] // Mutex poisoning is impossible here
     pub fn get(&mut self) -> Option<&mut T> {
         if self.state.updated.load(Ordering::Relaxed)
-            && self.state.updated.compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed)
+            && self
+                .state
+                .updated
+                .compare_exchange(true, false, Ordering::AcqRel, Ordering::Relaxed)
                 == Ok(true)
             && let Some(value) = self.state.locked.lock().unwrap().take()
         {
@@ -59,7 +62,10 @@ pub fn new_shared_var<T>() -> (SharedVarSender<T>, SharedVarReceiver<T>) {
         }),
     };
 
-    let receiver = SharedVarReceiver { latest: None, state: Arc::clone(&sender.state) };
+    let receiver = SharedVarReceiver {
+        latest: None,
+        state: Arc::clone(&sender.state),
+    };
 
     (sender, receiver)
 }

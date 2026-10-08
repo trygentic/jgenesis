@@ -7,7 +7,9 @@ struct Config<T> {
 
 #[test]
 fn config_display_generic() {
-    let config = Config { field: String::from("hello") };
+    let config = Config {
+        field: String::from("hello"),
+    };
     let s = format!("config: {config}");
     assert_eq!(s, "config: \n  field: hello");
 }

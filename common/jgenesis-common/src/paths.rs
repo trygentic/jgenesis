@@ -25,7 +25,9 @@ pub fn fix_appimage_relative_path(path: &Path) -> Cow<'_, Path> {
         return path.into();
     }
 
-    let Ok(owd) = env::var("OWD") else { return path.into() };
+    let Ok(owd) = env::var("OWD") else {
+        return path.into();
+    };
     let converted = Path::new(&owd).join(path);
 
     log::info!(

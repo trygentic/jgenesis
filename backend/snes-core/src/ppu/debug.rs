@@ -42,7 +42,11 @@ impl Ppu {
                     snes_color |= u8::from(tile[row].bit(col_idx + 8)) << 1;
 
                     let cgram_idx = (palette << 2) | snes_color;
-                    let color = if snes_color != 0 { self.cgram[cgram_idx as usize] } else { 0 };
+                    let color = if snes_color != 0 {
+                        self.cgram[cgram_idx as usize]
+                    } else {
+                        0
+                    };
                     out[out_idx] = ppu::convert_snes_color(color, ppu::MAX_BRIGHTNESS);
                 }
             }
@@ -81,7 +85,11 @@ impl Ppu {
                     snes_color |= u8::from(tile[row + 8].bit(col_idx + 8)) << 3;
 
                     let cgram_idx = (palette << 4) | snes_color;
-                    let color = if snes_color != 0 { self.cgram[cgram_idx as usize] } else { 0 };
+                    let color = if snes_color != 0 {
+                        self.cgram[cgram_idx as usize]
+                    } else {
+                        0
+                    };
                     out[out_idx] = ppu::convert_snes_color(color, ppu::MAX_BRIGHTNESS);
                 }
             }

@@ -79,7 +79,11 @@ impl Sa1Registers {
         self.dma_destination_address = (self.dma_destination_address + 1) & 0xFFFFFF;
         self.dma_terminal_counter = self.dma_terminal_counter.wrapping_sub(1);
 
-        self.dma_state = match (self.dma_terminal_counter, self.dma_source, self.dma_destination) {
+        self.dma_state = match (
+            self.dma_terminal_counter,
+            self.dma_source,
+            self.dma_destination,
+        ) {
             (0, _, _) => DmaState::Idle,
             (_, DmaSourceDevice::Rom, DmaDestinationDevice::Iram) => DmaState::NormalCopying,
             _ => DmaState::NormalWaitCycle,
@@ -124,8 +128,15 @@ impl Sa1Registers {
         }
 
         let rows_copied = ((rows_copied + 1) & 0x07) as u8;
-        let buffer_idx = (if rows_copied == 0 { 1 - buffer_idx } else { buffer_idx }) as u8;
-        self.dma_state = DmaState::CharacterConversion2 { buffer_idx, rows_copied }
+        let buffer_idx = (if rows_copied == 0 {
+            1 - buffer_idx
+        } else {
+            buffer_idx
+        }) as u8;
+        self.dma_state = DmaState::CharacterConversion2 {
+            buffer_idx,
+            rows_copied,
+        }
     }
 
     pub fn start_ccdma_type_1(&mut self, iram: &mut Iram, bwram: &[u8]) {
@@ -211,7 +222,11 @@ fn character_conversion_1_copy_tile(
 ) {
     let bitplanes = color_depth.bitplanes();
     let pixels_per_byte = 8 / bitplanes;
-    let pixel_mask = if bitplanes == 8 { 0xFF } else { (1 << bitplanes) - 1 };
+    let pixel_mask = if bitplanes == 8 {
+        0xFF
+    } else {
+        (1 << bitplanes) - 1
+    };
 
     let source_tile_addr = source_addr
         + (tile_number & (vram_width - 1)) * bitplanes

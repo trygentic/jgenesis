@@ -345,11 +345,16 @@ pub(crate) fn handle_interrupt<B: BusInterface>(
 ) {
     match cpu.state.cycle {
         0 => {
+            // lttprs: interrupt nesting for host cycle accounting (from the first cycle)
+            cpu.state.interrupt_depth = cpu.state.interrupt_depth.wrapping_add(1);
+
             // For hardware interrupts only; read operand but don't increment PC
             bus.read(u24_address(cpu.registers.pbr, cpu.registers.pc));
         }
         1 => {
             if interrupt.is_software() {
+                // lttprs: software interrupts start here (cycle 0 was the opcode fetch)
+                cpu.state.interrupt_depth = cpu.state.interrupt_depth.wrapping_add(1);
                 fetch_operand(cpu, bus);
             } else {
                 // Read operand but don't increment PC
@@ -530,6 +535,8 @@ pub(crate) fn rti<B: BusInterface>(cpu: &mut Wdc65816, bus: &mut B) {
             if cpu.registers.emulation_mode {
                 // Emulation mode skips the last cycle (pull PBR)
                 final_cycle(cpu, bus);
+                // lttprs: interrupt nesting ends on RTI's last cycle
+                cpu.state.interrupt_depth = cpu.state.interrupt_depth.saturating_sub(1);
 
                 ensure_page_1_stack(&mut cpu.registers);
 
@@ -541,6 +548,8 @@ pub(crate) fn rti<B: BusInterface>(cpu: &mut Wdc65816, bus: &mut B) {
         }
         6 => {
             final_cycle(cpu, bus);
+            // lttprs: interrupt nesting ends on RTI's last cycle
+            cpu.state.interrupt_depth = cpu.state.interrupt_depth.saturating_sub(1);
 
             cpu.registers.s = cpu.registers.s.wrapping_add(1);
             cpu.registers.pbr = bus.read(cpu.registers.s.into());

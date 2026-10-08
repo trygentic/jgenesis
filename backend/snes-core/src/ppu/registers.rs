@@ -104,7 +104,10 @@ impl BgMode {
     pub fn bg2_enabled(self, extbg_enabled: bool) -> bool {
         // BG2 is enabled in all modes except 6 and 7
         // Can still display in Mode 7 if EXTBG is enabled (uses same pixel data as BG1)
-        !matches!((self, extbg_enabled), (BgMode::Six, _) | (BgMode::Seven, false))
+        !matches!(
+            (self, extbg_enabled),
+            (BgMode::Six, _) | (BgMode::Seven, false)
+        )
     }
 
     pub fn bg2_bpp(self) -> BitsPerPixel {
@@ -418,7 +421,11 @@ pub enum ObjPriorityMode {
 
 impl ObjPriorityMode {
     fn from_byte(byte: u8) -> Self {
-        if byte.bit(7) { Self::Rotate } else { Self::Normal }
+        if byte.bit(7) {
+            Self::Rotate
+        } else {
+            Self::Normal
+        }
     }
 }
 
@@ -795,7 +802,11 @@ impl Registers {
         self.bg_base_address[bg] = u16::from(value & 0xFC) << 8;
 
         log::trace!("  BG{} screen size: {:?}", bg + 1, self.bg_screen_size[bg]);
-        log::trace!("  BG{} base address: {:04X}", bg + 1, self.bg_base_address[bg]);
+        log::trace!(
+            "  BG{} base address: {:04X}",
+            bg + 1,
+            self.bg_base_address[bg]
+        );
     }
 
     pub fn write_bg1234nba(&mut self, base_bg: usize, value: u8) {
@@ -931,7 +942,10 @@ impl Registers {
         self.obj_tile_gap_size = u16::from(value & 0x18) << 9;
         self.obj_tile_size = ObjTileSize::from_byte(value);
 
-        log::trace!("  OBJ tile base address: {:04X}", self.obj_tile_base_address);
+        log::trace!(
+            "  OBJ tile base address: {:04X}",
+            self.obj_tile_base_address
+        );
         log::trace!("  OBJ tile gap size: {:04X}", self.obj_tile_gap_size);
         log::trace!("  OBJ tile size: {:?}", self.obj_tile_size);
     }
@@ -943,10 +957,26 @@ impl Registers {
         self.bg_window_1_area[base_bg + 1] = WindowAreaMode::from_bits(value >> 4);
         self.bg_window_2_area[base_bg + 1] = WindowAreaMode::from_bits(value >> 6);
 
-        log::trace!("  BG{} window 1 mask: {:?}", base_bg + 1, self.bg_window_1_area[base_bg]);
-        log::trace!("  BG{} window 2 mask: {:?}", base_bg + 1, self.bg_window_2_area[base_bg]);
-        log::trace!("  BG{} window 1 mask: {:?}", base_bg + 2, self.bg_window_1_area[base_bg + 1]);
-        log::trace!("  BG{} window 2 mask: {:?}", base_bg + 2, self.bg_window_2_area[base_bg + 1]);
+        log::trace!(
+            "  BG{} window 1 mask: {:?}",
+            base_bg + 1,
+            self.bg_window_1_area[base_bg]
+        );
+        log::trace!(
+            "  BG{} window 2 mask: {:?}",
+            base_bg + 1,
+            self.bg_window_2_area[base_bg]
+        );
+        log::trace!(
+            "  BG{} window 1 mask: {:?}",
+            base_bg + 2,
+            self.bg_window_1_area[base_bg + 1]
+        );
+        log::trace!(
+            "  BG{} window 2 mask: {:?}",
+            base_bg + 2,
+            self.bg_window_2_area[base_bg + 1]
+        );
     }
 
     pub fn write_wobjsel(&mut self, value: u8) {
@@ -1001,7 +1031,10 @@ impl Registers {
         self.math_window_mask_logic = WindowMaskLogic::from_bits(value >> 2);
 
         log::trace!("  OBJ window mask logic: {:?}", self.obj_window_mask_logic);
-        log::trace!("  MATH window mask logic: {:?}", self.math_window_mask_logic);
+        log::trace!(
+            "  MATH window mask logic: {:?}",
+            self.math_window_mask_logic
+        );
     }
 
     pub fn write_tmw(&mut self, value: u8) {
@@ -1028,8 +1061,14 @@ impl Registers {
         }
         self.sub_obj_disabled_in_window = value.bit(4);
 
-        log::trace!("  Sub screen BG disabled inside window: {:?}", self.sub_bg_disabled_in_window);
-        log::trace!("  Sub screen OBJ disabled inside window: {}", self.sub_obj_disabled_in_window);
+        log::trace!(
+            "  Sub screen BG disabled inside window: {:?}",
+            self.sub_bg_disabled_in_window
+        );
+        log::trace!(
+            "  Sub screen OBJ disabled inside window: {}",
+            self.sub_obj_disabled_in_window
+        );
     }
 
     pub fn write_cgwsel(&mut self, value: u8) {
@@ -1052,10 +1091,16 @@ impl Registers {
             _ => unreachable!("value & 0xC0 is always one of the above values"),
         };
 
-        log::trace!("  Direct color mode enabled: {}", self.direct_color_mode_enabled);
+        log::trace!(
+            "  Direct color mode enabled: {}",
+            self.direct_color_mode_enabled
+        );
         log::trace!("  Sub screen BG/OBJ enabled: {}", self.sub_bg_obj_enabled);
         log::trace!("  Color math enabled: {:?}", self.color_math_enabled);
-        log::trace!("  Force main screen black: {:?}", self.force_main_screen_black);
+        log::trace!(
+            "  Force main screen black: {:?}",
+            self.force_main_screen_black
+        );
     }
 
     pub fn write_cgadsub(&mut self, value: u8) {
@@ -1067,14 +1112,20 @@ impl Registers {
         self.obj_color_math_enabled = value.bit(4);
         self.backdrop_color_math_enabled = value.bit(5);
         self.color_math_divide_enabled = value.bit(6);
-        self.color_math_operation =
-            if value.bit(7) { ColorMathOperation::Subtract } else { ColorMathOperation::Add };
+        self.color_math_operation = if value.bit(7) {
+            ColorMathOperation::Subtract
+        } else {
+            ColorMathOperation::Add
+        };
 
         log::trace!("  Color math operation: {:?}", self.color_math_operation);
         log::trace!("  Color math divide: {}", self.color_math_divide_enabled);
         log::trace!("  BG color math enabled: {:?}", self.bg_color_math_enabled);
         log::trace!("  OBJ color math enabled: {}", self.obj_color_math_enabled);
-        log::trace!("  Backdrop color math enabled: {}", self.backdrop_color_math_enabled);
+        log::trace!(
+            "  Backdrop color math enabled: {}",
+            self.backdrop_color_math_enabled
+        );
     }
 
     pub fn write_coldata(&mut self, value: u8) {
@@ -1111,7 +1162,10 @@ impl Registers {
             self.reload_oam_address();
         }
 
-        log::trace!("  OAM address reload value: {:04X}", self.oam_address_reload_value);
+        log::trace!(
+            "  OAM address reload value: {:04X}",
+            self.oam_address_reload_value
+        );
     }
 
     pub fn write_oamaddh(&mut self, value: u8, in_active_display: bool) {
@@ -1123,7 +1177,10 @@ impl Registers {
             self.reload_oam_address();
         }
 
-        log::trace!("  OAM address reload value: {:04X}", self.oam_address_reload_value);
+        log::trace!(
+            "  OAM address reload value: {:04X}",
+            self.oam_address_reload_value
+        );
         log::trace!("  OBJ priority mode: {:?}", self.obj_priority_mode);
     }
 
@@ -1138,9 +1195,18 @@ impl Registers {
         self.vram_address_translation = VramAddressTranslation::from_byte(value);
         self.vram_address_increment_mode = VramIncrementMode::from_byte(value);
 
-        log::trace!("  VRAM data port increment step: {}", self.vram_address_increment_step);
-        log::trace!("  VRAM data port address translation: {:?}", self.vram_address_translation);
-        log::trace!("  VRAM data port increment on byte: {:?}", self.vram_address_increment_mode);
+        log::trace!(
+            "  VRAM data port increment step: {}",
+            self.vram_address_increment_step
+        );
+        log::trace!(
+            "  VRAM data port address translation: {:?}",
+            self.vram_address_translation
+        );
+        log::trace!(
+            "  VRAM data port increment on byte: {:?}",
+            self.vram_address_increment_mode
+        );
     }
 
     pub fn write_vmaddl(&mut self, value: u8, vram: &Vram) {
@@ -1253,15 +1319,19 @@ impl Registers {
 
     pub fn obj_in_window(&self, window_x: u16) -> bool {
         self.obj_window_mask_logic.apply(
-            self.obj_window_1_area.to_optional_bool(self.is_inside_window_1(window_x)),
-            self.obj_window_2_area.to_optional_bool(self.is_inside_window_2(window_x)),
+            self.obj_window_1_area
+                .to_optional_bool(self.is_inside_window_1(window_x)),
+            self.obj_window_2_area
+                .to_optional_bool(self.is_inside_window_2(window_x)),
         )
     }
 
     pub fn in_math_window(&self, window_x: u16) -> bool {
         self.math_window_mask_logic.apply(
-            self.math_window_1_area.to_optional_bool(self.is_inside_window_1(window_x)),
-            self.math_window_2_area.to_optional_bool(self.is_inside_window_2(window_x)),
+            self.math_window_1_area
+                .to_optional_bool(self.is_inside_window_1(window_x)),
+            self.math_window_2_area
+                .to_optional_bool(self.is_inside_window_2(window_x)),
         )
     }
 

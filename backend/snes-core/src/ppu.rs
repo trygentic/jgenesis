@@ -2,8 +2,11 @@
 
 mod colortable;
 mod debug;
+// lttprs: outfit hooks (OBJ hide mask, OBJ coverage, frame INIDISP)
+pub mod obj_hooks;
 mod registers;
 mod sprites;
+pub mod wide; // mmxrs patch: widescreen margins
 
 use crate::api::SnesEmulatorConfig;
 use crate::ppu::registers::{
@@ -91,7 +94,11 @@ impl State {
     }
 
     fn frame_screen_width(&self) -> u32 {
-        if self.h_hi_res_frame { HIRES_SCREEN_WIDTH as u32 } else { NORMAL_SCREEN_WIDTH as u32 }
+        if self.h_hi_res_frame {
+            HIRES_SCREEN_WIDTH as u32
+        } else {
+            NORMAL_SCREEN_WIDTH as u32
+        }
     }
 
     fn update_v_mosaic(&mut self, mosaic_size: u8) {
@@ -145,7 +152,11 @@ struct Pixel {
 }
 
 impl Pixel {
-    const TRANSPARENT: Self = Self { palette: 0, color: 0, priority: 0 };
+    const TRANSPARENT: Self = Self {
+        palette: 0,
+        color: 0,
+        priority: 0,
+    };
 
     fn is_transparent(self) -> bool {
         self.color == 0
@@ -161,7 +172,11 @@ struct RenderedPixel {
 
 impl Default for RenderedPixel {
     fn default() -> Self {
-        Self { color: 0, palette: 0, layer: Layer::Backdrop }
+        Self {
+            color: 0,
+            palette: 0,
+            layer: Layer::Backdrop,
+        }
     }
 }
 
@@ -246,7 +261,11 @@ impl PriorityResolver {
     const MODE_27_BG2_LOW: u8 = 7;
 
     fn new() -> Self {
-        Self { min_priority: u8::MAX, min_pixel: Pixel::TRANSPARENT, min_layer: Layer::Backdrop }
+        Self {
+            min_priority: u8::MAX,
+            min_pixel: Pixel::TRANSPARENT,
+            min_layer: Layer::Backdrop,
+        }
     }
 
     fn add_bg1(&mut self, pixel: Pixel, is_mode_0_or_1: bool) {
@@ -279,12 +298,20 @@ impl PriorityResolver {
             return;
         }
 
-        let priority = if pixel.priority == 1 { Self::BG3_HIGH } else { Self::BG3_LOW };
+        let priority = if pixel.priority == 1 {
+            Self::BG3_HIGH
+        } else {
+            Self::BG3_LOW
+        };
         self.add_pixel(pixel, Layer::Bg3, priority);
     }
 
     fn add_bg4(&mut self, pixel: Pixel) {
-        let priority = if pixel.priority == 1 { Self::BG4_HIGH } else { Self::BG4_LOW };
+        let priority = if pixel.priority == 1 {
+            Self::BG4_HIGH
+        } else {
+            Self::BG4_LOW
+        };
         self.add_pixel(pixel, Layer::Bg4, priority);
     }
 
@@ -348,7 +375,147 @@ pub struct Ppu {
     frame_buffer: BoxedColorArray<FRAME_BUFFER_LEN>,
     sprites: SpriteProcessor,
     deinterlace: bool,
+    pub(crate) timing_profile: crate::api::TimingProfile,
+    // mmxrs patch: player 2's shadow sprite tile page (cloned into save states;
+    // bincode-encoded by the host after the emulator, see `P2TilesSlot`)
+    p2_tiles: P2TilesSlot,
+    // mmxrs patch: display-only sprite offset (not in save states, see `SpriteOffset`)
+    sprite_offset: SpriteOffset,
+    // mmxrs patch: display-only widescreen margins (not in save states, see `wide.rs`)
+    wide: wide::Wide,
+    // lttprs: host-only OBJ hooks (never serialized, see `obj_hooks`)
+    obj_hooks: obj_hooks::ObjHooks,
 }
+
+// mmxrs patch begin: shadow sprite tile page for mmx-core's player 2.
+/// Words per page: 48 4bpp tiles, laid out as three name-table rows of 16, so
+/// a 16x16 sprite's n, n+1, n+16, n+17 stay inside it (`tile & 0x3F`; a fourth
+/// row, tiles `$30-$3F`, wraps to row 0: `P2_PAGE_TILES` modulo).
+pub const P2_PAGE_WORDS: usize = 768;
+pub const P2_PAGE_TILES: u16 = 48;
+/// Four pages back to back: page 1 is for slots also set in `page1` (a second
+/// Zero, mmx-core's P1), page 2 for slots set in `page2` (the saber waves),
+/// page 3 for slots set in both (HUD icons).
+pub const P2_PAGES: usize = 4;
+
+/// A sprite whose OAM slot bit is set in `slots` reads its tiles from `page`
+/// (index `(tile_number & 0x3F) % 48`) instead of VRAM. The host writes `next_*`;
+/// they go live on the next OAMDATA write (the game's OAM upload), so the page
+/// and mask switch together with the OAM they describe. A slot also set in
+/// `page1` reads the second page, one set in `page2` the third, one in both
+/// the fourth.
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct P2Tiles {
+    pub page: Box<[u16; P2_PAGE_WORDS * P2_PAGES]>,
+    pub slots: u128,
+    pub next_page: Box<[u16; P2_PAGE_WORDS * P2_PAGES]>,
+    pub next_slots: u128,
+    pub pending: bool,
+    pub page1: u128,
+    pub next_page1: u128,
+    pub page2: u128,
+    pub next_page2: u128,
+    /// Slots drawn with `palette` instead of their CGRAM sprite palette (the
+    /// OAM palette bits still decide colour math): a ninth sprite palette for
+    /// mmx-core's player 2, so it needs none of the game's eight.
+    pub pal: u128,
+    pub next_pal: u128,
+    pub palette: [u16; 16],
+    pub next_palette: [u16; 16],
+}
+
+/// `Pixel::palette` bit for a sprite pixel coloured from `P2Tiles::palette`.
+pub(crate) const EXTRA_PALETTE: u8 = 8;
+
+impl Default for P2Tiles {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl P2Tiles {
+    pub fn new() -> Self {
+        Self {
+            page: Box::new([0; P2_PAGE_WORDS * P2_PAGES]),
+            slots: 0,
+            next_page: Box::new([0; P2_PAGE_WORDS * P2_PAGES]),
+            next_slots: 0,
+            pending: false,
+            page1: 0,
+            next_page1: 0,
+            page2: 0,
+            next_page2: 0,
+            pal: 0,
+            next_pal: 0,
+            palette: [0; 16],
+            next_palette: [0; 16],
+        }
+    }
+
+    fn latch(&mut self) {
+        self.page.copy_from_slice(self.next_page.as_ref());
+        self.slots = self.next_slots;
+        self.page1 = self.next_page1;
+        self.page2 = self.next_page2;
+        self.pal = self.next_pal;
+        self.palette = self.next_palette;
+        self.pending = false;
+    }
+}
+
+/// Encodes as nothing and decodes as empty, so save states written before
+/// this patch still decode; the host encodes the `P2Tiles` after the state.
+#[derive(Debug, Clone)]
+pub struct P2TilesSlot(pub P2Tiles);
+
+impl Encode for P2TilesSlot {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        _: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        Ok(())
+    }
+}
+
+impl<C> Decode<C> for P2TilesSlot {
+    fn decode<D: bincode::de::Decoder<Context = C>>(
+        _: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Self(P2Tiles::new()))
+    }
+}
+bincode::impl_borrow_decode!(P2TilesSlot);
+
+/// Display-only offset for the OAM slots in `slots` (mmx-core's netplay
+/// smoothing of the remote player): applied to their X/Y when sprites are
+/// scanned and fetched, never to OAM. Encodes as nothing and decodes as zero,
+/// so it is in no save state (a loaded state renders unshifted until the host
+/// sets it again).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SpriteOffset {
+    pub slots: u128,
+    pub dx: i16,
+    pub dy: i16,
+}
+
+impl Encode for SpriteOffset {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        _: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        Ok(())
+    }
+}
+
+impl<C> Decode<C> for SpriteOffset {
+    fn decode<D: bincode::de::Decoder<Context = C>>(
+        _: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Self::default())
+    }
+}
+bincode::impl_borrow_decode!(SpriteOffset);
+// mmxrs patch end
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 enum ScanlineLength {
@@ -390,13 +557,30 @@ impl Ppu {
             registers: Registers::new(),
             state: State::new(),
             buffers: Box::new(Buffers::new()),
-            vram: vec![0; VRAM_LEN_WORDS].into_boxed_slice().try_into().unwrap(),
-            oam_low: vec![0; OAM_LOW_LEN_WORDS].into_boxed_slice().try_into().unwrap(),
-            oam_high: vec![0; OAM_HIGH_LEN_BYTES].into_boxed_slice().try_into().unwrap(),
-            cgram: vec![0; CGRAM_LEN_WORDS].into_boxed_slice().try_into().unwrap(),
+            vram: vec![0; VRAM_LEN_WORDS]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
+            oam_low: vec![0; OAM_LOW_LEN_WORDS]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
+            oam_high: vec![0; OAM_HIGH_LEN_BYTES]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
+            cgram: vec![0; CGRAM_LEN_WORDS]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
             frame_buffer: BoxedColorArray::new(),
             sprites: SpriteProcessor::new(),
             deinterlace: config.deinterlace,
+            timing_profile: config.timing_profile,
+            p2_tiles: P2TilesSlot(P2Tiles::new()), // mmxrs patch
+            sprite_offset: SpriteOffset::default(), // mmxrs patch
+            wide: wide::Wide::default(),           // mmxrs patch
+            obj_hooks: obj_hooks::ObjHooks::default(),
         }
     }
 
@@ -472,6 +656,10 @@ impl Ppu {
                 if !self.registers.forced_blanking {
                     self.registers.oam_address = self.registers.oam_address_reload_value << 1;
                 }
+
+                // lttprs: INIDISP of the frame just completed
+                self.obj_hooks.frame_brightness = self.registers.brightness;
+                self.obj_hooks.frame_forced_blank = self.registers.forced_blanking;
 
                 tick_effect = PpuTickEffect::FrameComplete;
             }
@@ -551,13 +739,32 @@ impl Ppu {
         }
     }
 
+    // mmxrs patch: the widescreen margins after each (partial) line render
     fn render_current_line(&mut self, from_pixel: u16) {
+        self.render_current_line_inner(from_pixel);
+        let t = crate::prof::now();
+        self.render_wide_margins(self.state.scanline, from_pixel);
+        if let (Some(a), Some(b)) = (t, crate::prof::now()) {
+            crate::prof::add_wide_ns(b - a);
+        }
+    }
+
+    fn render_current_line_inner(&mut self, from_pixel: u16) {
         let scanline = self.state.scanline;
         self.state.last_rendered_scanline = Some(scanline);
 
         if self.registers.forced_blanking {
+            // lttprs: no OBJ is visible on a blanked line
+            if let Some(coverage) = self.obj_hooks.coverage.as_mut() {
+                coverage.clear_row(scanline, usize::from(from_pixel));
+            }
+
             // Forced blanking always draws black
-            let from_pixel = if self.state.h_hi_res_frame { 2 * from_pixel } else { from_pixel };
+            let from_pixel = if self.state.h_hi_res_frame {
+                2 * from_pixel
+            } else {
+                from_pixel
+            };
             let screen_width = self.state.frame_screen_width();
 
             if self.state.v_hi_res_frame {
@@ -583,9 +790,16 @@ impl Ppu {
             HiResMode::None
         };
 
-        let bg_from_pixel =
-            if hi_res_mode == HiResMode::True { 2 * from_pixel } else { from_pixel };
-        let screen_from_pixel = if hi_res_mode.is_hi_res() { 2 * from_pixel } else { from_pixel };
+        let bg_from_pixel = if hi_res_mode == HiResMode::True {
+            2 * from_pixel
+        } else {
+            from_pixel
+        };
+        let screen_from_pixel = if hi_res_mode.is_hi_res() {
+            2 * from_pixel
+        } else {
+            from_pixel
+        };
         let v_hi_res = hi_res_mode == HiResMode::True && self.registers.interlaced;
 
         if self.state.v_hi_res_frame && v_hi_res {
@@ -608,7 +822,11 @@ impl Ppu {
         } else if !self.state.v_hi_res_frame && v_hi_res {
             // Probably should never happen - PPU is in 448px mode but interlacing was disabled at
             // start of frame
-            let y = if self.state.odd_frame { 2 * scanline } else { 2 * scanline - 1 };
+            let y = if self.state.odd_frame {
+                2 * scanline
+            } else {
+                2 * scanline - 1
+            };
 
             self.render_bg_layers_to_buffer(y, hi_res_mode, bg_from_pixel);
             self.render_scanline(scanline, hi_res_mode, screen_from_pixel);
@@ -692,8 +910,11 @@ impl Ppu {
         hi_res_mode: HiResMode,
         from_pixel: u16,
     ) {
-        let screen_width =
-            if hi_res_mode == HiResMode::True { HIRES_SCREEN_WIDTH } else { NORMAL_SCREEN_WIDTH };
+        let screen_width = if hi_res_mode == HiResMode::True {
+            HIRES_SCREEN_WIDTH
+        } else {
+            NORMAL_SCREEN_WIDTH
+        };
 
         let mode = self.registers.bg_mode;
         let bpp = match bg {
@@ -771,8 +992,16 @@ impl Ppu {
                 bg_map_entry.y_flip,
             );
 
-            let tile_row = if bg_map_entry.y_flip { 7 - (y % 8) } else { y % 8 };
-            let tile_col = if bg_map_entry.x_flip { 7 - (x % 8) } else { x % 8 };
+            let tile_row = if bg_map_entry.y_flip {
+                7 - (y % 8)
+            } else {
+                y % 8
+            };
+            let tile_col = if bg_map_entry.x_flip {
+                7 - (x % 8)
+            } else {
+                x % 8
+            };
             let bit_index = (7 - tile_col) as u8;
 
             // Parse color bits out of bitplane tile data
@@ -910,7 +1139,11 @@ impl Ppu {
             let pixel_addr = 64 * tile_number + 8 * tile_row + tile_col;
             let color = self.vram[pixel_addr as usize].msb();
 
-            self.buffers.bg_pixels[0][pixel as usize] = Pixel { palette: 0, color, priority: 0 };
+            self.buffers.bg_pixels[0][pixel as usize] = Pixel {
+                palette: 0,
+                color,
+                priority: 0,
+            };
         }
     }
 
@@ -1008,12 +1241,28 @@ impl Ppu {
             self.render_screen_pixels(Screen::Sub, hi_res_mode);
         }
 
-        let screen_width =
-            if hi_res_mode.is_hi_res() { HIRES_SCREEN_WIDTH } else { NORMAL_SCREEN_WIDTH };
+        // lttprs: OBJ coverage of the main screen (needs both screens resolved)
+        if self.obj_hooks.coverage.is_some() {
+            let from_x = if hi_res_mode.is_hi_res() {
+                screen_from_pixel / 2
+            } else {
+                screen_from_pixel
+            };
+            self.update_obj_coverage(hi_res_mode, usize::from(from_x));
+        }
+
+        let screen_width = if hi_res_mode.is_hi_res() {
+            HIRES_SCREEN_WIDTH
+        } else {
+            NORMAL_SCREEN_WIDTH
+        };
 
         let brightness = self.registers.brightness;
-        let main_backdrop_pixel =
-            RenderedPixel { palette: 0, color: self.cgram[0], layer: Layer::Backdrop };
+        let main_backdrop_pixel = RenderedPixel {
+            palette: 0,
+            color: self.cgram[0],
+            layer: Layer::Backdrop,
+        };
         let sub_backdrop_color = self.registers.sub_backdrop_color;
 
         for pixel in screen_from_pixel..screen_width as u16 {
@@ -1026,7 +1275,11 @@ impl Ppu {
                 // Even pixels draw the sub screen in hi-res mode
                 // If all sub screen pixels are transparent, draw the main backdrop color
                 let sub_pixel = self.buffers.sub_screen_rendered_pixels[screen_x as usize];
-                if sub_pixel.layer == Layer::Backdrop { main_backdrop_pixel } else { sub_pixel }
+                if sub_pixel.layer == Layer::Backdrop {
+                    main_backdrop_pixel
+                } else {
+                    sub_pixel
+                }
             } else {
                 self.buffers.main_screen_rendered_pixels[screen_x as usize]
             };
@@ -1034,8 +1287,10 @@ impl Ppu {
             // Check if inside the color window (used for clipping and color math)
             let in_color_window = self.registers.in_math_window(screen_x);
 
-            let force_main_screen_black =
-                self.registers.force_main_screen_black.enabled(in_color_window);
+            let force_main_screen_black = self
+                .registers
+                .force_main_screen_black
+                .enabled(in_color_window);
             if force_main_screen_black {
                 // Pixel is clipped; force color to 0 (black)
                 main_screen_pixel.color = 0;
@@ -1051,7 +1306,8 @@ impl Ppu {
                 Layer::Bg3 => self.registers.bg_color_math_enabled[2],
                 Layer::Bg4 => self.registers.bg_color_math_enabled[3],
                 Layer::Obj => {
-                    self.registers.obj_color_math_enabled && main_screen_pixel.palette >= 4
+                    // mmxrs patch: `& 7` drops `EXTRA_PALETTE`
+                    self.registers.obj_color_math_enabled && main_screen_pixel.palette & 7 >= 4
                 }
                 Layer::Backdrop => self.registers.backdrop_color_math_enabled,
             };
@@ -1142,24 +1398,6 @@ impl Ppu {
         let mode = self.registers.bg_mode;
         let is_mode_0_or_1 = matches!(mode, BgMode::Zero | BgMode::One);
 
-        // OBJ layer (enabled in all modes)
-        if obj_enabled {
-            for (x, priority_resolver) in screen_pixels.iter_mut().enumerate() {
-                if obj_disabled_in_window {
-                    let screen_x = apply_screen_shift(x, screen_x_shift, screen_x_offset);
-                    let obj_in_window = self.registers.obj_in_window(screen_x);
-                    if obj_in_window {
-                        continue;
-                    }
-                }
-
-                let obj_pixel = self.buffers.obj_pixels[x];
-                if !obj_pixel.is_transparent() {
-                    priority_resolver.add_obj(obj_pixel, is_mode_0_or_1);
-                }
-            }
-        }
-
         // BG1 layer (enabled in all modes)
         if bg_enabled[0] {
             for (x, priority_resolver) in screen_pixels.iter_mut().enumerate() {
@@ -1204,7 +1442,11 @@ impl Ppu {
 
                         let bg2_priority = bg1_pixel.color >> 7;
                         priority_resolver.add_bg2(
-                            Pixel { priority: bg2_priority, color: bg2_pixel_color, palette: 0 },
+                            Pixel {
+                                priority: bg2_priority,
+                                color: bg2_pixel_color,
+                                palette: 0,
+                            },
                             false,
                         );
                     }
@@ -1258,22 +1500,58 @@ impl Ppu {
             }
         }
 
-        let backdrop_pixel =
-            RenderedPixel { color: backdrop_color, palette: 0, layer: Layer::Backdrop };
+        // lttprs: OBJ is resolved after the BGs (same result: layer priorities are distinct, and
+        // high-priority mode 1 BG3 beats OBJ.3 either way) so the outfit hooks can keep the
+        // background-only resolution of the main screen.
+        if screen == Screen::Main
+            && let Some(coverage) = self.obj_hooks.coverage.as_mut()
+        {
+            coverage.bg_only.copy_from_slice(screen_pixels);
+        }
+
+        // OBJ layer (enabled in all modes)
+        if obj_enabled {
+            for (x, priority_resolver) in screen_pixels.iter_mut().enumerate() {
+                if obj_disabled_in_window {
+                    let screen_x = apply_screen_shift(x, screen_x_shift, screen_x_offset);
+                    let obj_in_window = self.registers.obj_in_window(screen_x);
+                    if obj_in_window {
+                        continue;
+                    }
+                }
+
+                let obj_pixel = self.buffers.obj_pixels[x];
+                if !obj_pixel.is_transparent() {
+                    priority_resolver.add_obj(obj_pixel, is_mode_0_or_1);
+                }
+            }
+        }
+
+        let backdrop_pixel = RenderedPixel {
+            color: backdrop_color,
+            palette: 0,
+            layer: Layer::Backdrop,
+        };
         for (priority_resolver, rendered_pixel) in
             screen_pixels.iter_mut().zip(screen_rendered_pixels)
         {
-            *rendered_pixel = priority_resolver.get().map_or(backdrop_pixel, |(pixel, layer)| {
-                let color = resolve_pixel_color(
-                    &self.cgram,
-                    layer,
-                    mode,
-                    self.registers.direct_color_mode_enabled,
-                    pixel.palette,
-                    pixel.color,
-                );
-                RenderedPixel { color, palette: pixel.palette, layer }
-            });
+            *rendered_pixel = priority_resolver
+                .get()
+                .map_or(backdrop_pixel, |(pixel, layer)| {
+                    let color = pixel_color(
+                        &self.cgram,
+                        &self.p2_tiles.0.palette,
+                        layer,
+                        mode,
+                        self.registers.direct_color_mode_enabled,
+                        pixel,
+                    );
+                    RenderedPixel {
+                        color,
+                        palette: pixel.palette,
+                        layer,
+                    }
+                });
         }
     }
 
@@ -1364,7 +1642,11 @@ impl Ppu {
             "Expanding previous frame from V{}px to V{}px; screen width H{}px",
             v_display_size,
             2 * v_display_size,
-            if next_frame_h_hi_res { HIRES_SCREEN_WIDTH } else { NORMAL_SCREEN_WIDTH }
+            if next_frame_h_hi_res {
+                HIRES_SCREEN_WIDTH
+            } else {
+                NORMAL_SCREEN_WIDTH
+            }
         );
 
         // Duplicate lines to expand frame buffer from V224px to V448px (or V239px to V478px)
@@ -1455,10 +1737,22 @@ impl Ppu {
     }
 
     // There is a 10 mclk / 2.5 dot delay on raising IRQ in response to VTIME/HTIME matches
-    const IRQ_OFFSET_MCLKS: u64 = 10;
+
+    // mmxrs patch: when the CPU sees an H/V IRQ (bsnes v0.87 and Mesen 2 agree): an
+    // H (or H+V) IRQ at HTIME=n is visible to a CPU cycle starting at H=18+4n master
+    // clocks, a V-only IRQ at H=14 of line VTIME. Upstream used 10 for both, so the
+    // IRQ was taken up to an instruction early. docs/oracle.md.
+    const IRQ_H_OFFSET_MCLKS: u64 = 18;
+    const IRQ_V_OFFSET_MCLKS: u64 = 14;
 
     pub fn vtime_for_irq(&self) -> u16 {
-        if self.state.scanline_master_cycles >= Self::IRQ_OFFSET_MCLKS {
+        if self.state.scanline_master_cycles
+            >= if self.timing_profile.hardware() {
+                Self::IRQ_V_OFFSET_MCLKS
+            } else {
+                10
+            }
+        {
             self.state.scanline
         } else if self.state.scanline == 0 {
             self.scanlines_per_frame() - 1
@@ -1468,11 +1762,15 @@ impl Ppu {
     }
 
     pub fn htime_for_irq(&self) -> u16 {
-        let scanline_mclks = if self.state.scanline_master_cycles >= Self::IRQ_OFFSET_MCLKS {
-            self.state.scanline_master_cycles - Self::IRQ_OFFSET_MCLKS
+        let off = if self.timing_profile.hardware() {
+            Self::IRQ_H_OFFSET_MCLKS
         } else {
-            self.state.prev_line_length.scanline_mclks()
-                - (Self::IRQ_OFFSET_MCLKS - self.state.scanline_master_cycles)
+            10
+        };
+        let scanline_mclks = if self.state.scanline_master_cycles >= off {
+            self.state.scanline_master_cycles - off
+        } else {
+            self.state.prev_line_length.scanline_mclks() - (off - self.state.scanline_master_cycles)
         };
 
         // CPU HTIME counter does not account for some dots being shorter/longer; assumes all dots
@@ -1482,6 +1780,74 @@ impl Ppu {
 
     pub fn previous_line_max_htime(&self) -> u16 {
         (self.state.prev_line_length.scanline_mclks() / 4) as u16
+    }
+
+    // mmxrs patch: raw OAM (512 B low table, little-endian words, then 32 B high table)
+    pub fn oam_bytes(&self) -> [u8; 544] {
+        let mut out = [0; 544];
+        for (i, word) in self.oam_low.iter().enumerate() {
+            out[2 * i..2 * i + 2].copy_from_slice(&word.to_le_bytes());
+        }
+        out[512..].copy_from_slice(self.oam_high.as_ref());
+        out
+    }
+
+    // mmxrs patch: raw CGRAM (BGR555 words)
+    pub fn cgram(&self) -> [u16; 256] {
+        *self.cgram
+    }
+
+    // mmxrs patch: raw VRAM (words) and OBSEL (sprite tile base, gap; word addresses)
+    pub fn vram(&self) -> &[u16; VRAM_LEN_WORDS] {
+        &self.vram
+    }
+
+    pub fn obsel(&self) -> (u16, u16) {
+        (
+            self.registers.obj_tile_base_address,
+            self.registers.obj_tile_gap_size,
+        )
+    }
+
+    // mmxrs patch: P2 shadow tile page (pending copy; goes live on the next OAM upload)
+    pub fn p2_tile_page_mut(&mut self) -> &mut [u16; P2_PAGE_WORDS * P2_PAGES] {
+        self.p2_tiles.0.pending = true;
+        &mut self.p2_tiles.0.next_page
+    }
+
+    pub fn set_p2_tile_slots(&mut self, mask: u128, page1: u128, page2: u128) {
+        self.p2_tiles.0.next_slots = mask;
+        self.p2_tiles.0.next_page1 = page1;
+        self.p2_tiles.0.next_page2 = page2;
+        self.p2_tiles.0.pending = true;
+    }
+
+    pub fn p2_tiles(&self) -> &P2Tiles {
+        &self.p2_tiles.0
+    }
+
+    /// mmxrs patch: `P2Tiles::palette` for the slots in `mask` (pending, like the page).
+    pub fn set_p2_palette(&mut self, mask: u128, palette: [u16; 16]) {
+        self.p2_tiles.0.next_pal = mask;
+        self.p2_tiles.0.next_palette = palette;
+        self.p2_tiles.0.pending = true;
+    }
+
+    pub fn set_p2_tiles(&mut self, t: P2Tiles) {
+        self.p2_tiles.0 = t;
+    }
+
+    // mmxrs patch: display-only sprite offset (see `SpriteOffset`)
+    pub fn set_sprite_offset(&mut self, slots: u128, dx: i16, dy: i16) {
+        self.sprite_offset = SpriteOffset { slots, dx, dy };
+    }
+
+    pub fn cgram_ref(&self) -> &[u16] {
+        self.cgram.as_slice()
+    }
+
+    pub fn oam(&self) -> (&[u16], &[u8]) {
+        (self.oam_low.as_slice(), self.oam_high.as_slice())
     }
 
     pub fn frame_buffer(&self) -> &[Color] {
@@ -1496,13 +1862,19 @@ impl Ppu {
             screen_height *= 2;
         }
 
-        FrameSize { width: screen_width, height: screen_height.into() }
+        FrameSize {
+            width: screen_width,
+            height: screen_height.into(),
+        }
     }
 
     pub fn composite_params(&self) -> CompositeParams {
         let upscale_factor = if self.state.h_hi_res_frame { 4 } else { 8 };
 
-        CompositeParams { upscale_factor, samples_per_color_cycle: SamplesPerColorCycle::Twelve }
+        CompositeParams {
+            upscale_factor,
+            samples_per_color_cycle: SamplesPerColorCycle::Twelve,
+        }
     }
 
     pub fn read_port(&mut self, address: u32) -> Option<u8> {
@@ -1610,11 +1982,16 @@ impl Ppu {
                     self.sprites_forced_blanking_change(new_forced_blanking);
                 }
 
-                self.registers.write_inidisp(value, self.is_first_vblank_scanline());
+                self.registers
+                    .write_inidisp(value, self.is_first_vblank_scanline());
             }
             0x01 => self.registers.write_obsel(value),
-            0x02 => self.registers.write_oamaddl(value, self.in_active_display(scanline)),
-            0x03 => self.registers.write_oamaddh(value, self.in_active_display(scanline)),
+            0x02 => self
+                .registers
+                .write_oamaddl(value, self.in_active_display(scanline)),
+            0x03 => self
+                .registers
+                .write_oamaddh(value, self.in_active_display(scanline)),
             0x04 => {
                 // OAMDATA: OAM data port (write)
                 self.write_oam_data_port(value);
@@ -1698,9 +2075,11 @@ impl Ppu {
     fn write_vram_data_port_low(&mut self, value: u8) {
         if self.vblank_flag() || self.registers.forced_blanking {
             // VRAM writes only allowed during VBlank and forced blanking
-            let vram_addr =
-                (self.registers.vram_address_translation.apply(self.registers.vram_address)
-                    & VRAM_ADDRESS_MASK) as usize;
+            let vram_addr = (self
+                .registers
+                .vram_address_translation
+                .apply(self.registers.vram_address)
+                & VRAM_ADDRESS_MASK) as usize;
             self.vram[vram_addr].set_lsb(value);
         }
 
@@ -1712,9 +2091,11 @@ impl Ppu {
     fn write_vram_data_port_high(&mut self, value: u8) {
         if self.vblank_flag() || self.registers.forced_blanking {
             // VRAM writes only allowed during VBlank and forced blanking
-            let vram_addr =
-                (self.registers.vram_address_translation.apply(self.registers.vram_address)
-                    & VRAM_ADDRESS_MASK) as usize;
+            let vram_addr = (self
+                .registers
+                .vram_address_translation
+                .apply(self.registers.vram_address)
+                & VRAM_ADDRESS_MASK) as usize;
             self.vram[vram_addr].set_msb(value);
         }
 
@@ -1748,17 +2129,34 @@ impl Ppu {
     }
 
     fn increment_vram_address(&mut self) {
-        self.registers.vram_address =
-            self.registers.vram_address.wrapping_add(self.registers.vram_address_increment_step);
+        self.registers.vram_address = self
+            .registers
+            .vram_address
+            .wrapping_add(self.registers.vram_address_increment_step);
     }
 
     fn fill_vram_prefetch_buffer(&mut self) {
-        let vram_addr = self.registers.vram_address_translation.apply(self.registers.vram_address)
+        let vram_addr = self
+            .registers
+            .vram_address_translation
+            .apply(self.registers.vram_address)
             & VRAM_ADDRESS_MASK;
         self.registers.vram_prefetch_buffer = self.vram[vram_addr as usize];
     }
 
     fn write_oam_data_port(&mut self, value: u8) {
+        // mmxrs patch: the game's OAM upload makes the pending P2 page and mask live
+        if self.p2_tiles.0.pending {
+            self.p2_tiles.0.latch();
+        }
+        // mmxrs patch: and the pending margin sprites (ppu::wide)
+        if let Some(m) = self.wide.next_sprites.take() {
+            self.wide.sprites = m;
+        }
+        if let Some(h) = self.wide.next_hud.take() {
+            self.wide.hud = h;
+        }
+
         if self.in_active_display(self.state.scanline) {
             self.handle_active_display_oam_write(value);
             return;
@@ -1925,12 +2323,14 @@ impl Ppu {
     }
 
     pub fn update_config(&mut self, config: SnesEmulatorConfig) {
+        self.timing_profile = config.timing_profile;
         self.deinterlace = config.deinterlace;
     }
 
     pub fn reset(&mut self) {
         // Enable forced blanking
-        self.registers.write_inidisp(0x80, self.is_first_vblank_scanline());
+        self.registers
+            .write_inidisp(0x80, self.is_first_vblank_scanline());
 
         // Return to default rendering mode (224-line, non-interlaced, no pseudo-hi-res or smaller OBJs)
         self.registers.write_setini(0x00);
@@ -2030,6 +2430,22 @@ fn line_overlaps_sprite(sprite_y: u8, sprite_height: u16, scanline: u16) -> bool
     }
 }
 
+/// mmxrs patch: `resolve_pixel_color`, or the P2 palette (`P2Tiles::palette`)
+/// for a sprite pixel flagged `EXTRA_PALETTE`.
+fn pixel_color(
+    cgram: &Cgram,
+    p2: &[u16; 16],
+    layer: Layer,
+    mode: BgMode,
+    direct: bool,
+    p: Pixel,
+) -> u16 {
+    if layer == Layer::Obj && p.palette & EXTRA_PALETTE != 0 {
+        return p2[usize::from(p.color & 15)];
+    }
+    resolve_pixel_color(cgram, layer, mode, direct, p.palette, p.color)
+}
+
 fn resolve_pixel_color(
     cgram: &Cgram,
     layer: Layer,
@@ -2107,15 +2523,36 @@ mod tests {
 
     #[test]
     fn direct_color() {
-        assert_eq!(0b00000_00000_11100, resolve_direct_color(0b000, 0b00_000_111));
-        assert_eq!(0b00000_00000_11110, resolve_direct_color(0b001, 0b00_000_111));
+        assert_eq!(
+            0b00000_00000_11100,
+            resolve_direct_color(0b000, 0b00_000_111)
+        );
+        assert_eq!(
+            0b00000_00000_11110,
+            resolve_direct_color(0b001, 0b00_000_111)
+        );
 
-        assert_eq!(0b00000_11100_00000, resolve_direct_color(0b000, 0b00_111_000));
-        assert_eq!(0b00000_11110_00000, resolve_direct_color(0b010, 0b00_111_000));
+        assert_eq!(
+            0b00000_11100_00000,
+            resolve_direct_color(0b000, 0b00_111_000)
+        );
+        assert_eq!(
+            0b00000_11110_00000,
+            resolve_direct_color(0b010, 0b00_111_000)
+        );
 
-        assert_eq!(0b11000_00000_00000, resolve_direct_color(0b000, 0b11_000_000));
-        assert_eq!(0b11100_00000_00000, resolve_direct_color(0b100, 0b11_000_000));
+        assert_eq!(
+            0b11000_00000_00000,
+            resolve_direct_color(0b000, 0b11_000_000)
+        );
+        assert_eq!(
+            0b11100_00000_00000,
+            resolve_direct_color(0b100, 0b11_000_000)
+        );
 
-        assert_eq!(0b11100_11110_11110, resolve_direct_color(0b111, 0b11_111_111));
+        assert_eq!(
+            0b11100_11110_11110,
+            resolve_direct_color(0b111, 0b11_111_111)
+        );
     }
 }

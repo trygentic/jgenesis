@@ -27,13 +27,25 @@ struct NamedFields {
 
 #[test]
 fn nested_named_fields() {
-    let inner = NestedNamed { a: vec![1, 2, 3], b: vec![4, 5, 6], c: "hello".into() };
-    let outer = NamedFields { d: vec![7, 8, 9], e: vec![10, 11, 12], f: inner };
+    let inner = NestedNamed {
+        a: vec![1, 2, 3],
+        b: vec![4, 5, 6],
+        c: "hello".into(),
+    };
+    let outer = NamedFields {
+        d: vec![7, 8, 9],
+        e: vec![10, 11, 12],
+        f: inner,
+    };
 
     let expected = NamedFields {
         d: vec![7, 8, 9],
         e: vec![],
-        f: NestedNamed { a: vec![1, 2, 3], b: vec![], c: "hello".into() },
+        f: NestedNamed {
+            a: vec![1, 2, 3],
+            b: vec![],
+            c: "hello".into(),
+        },
     };
     assert_eq!(outer.partial_clone(), expected);
 }
@@ -57,7 +69,11 @@ fn nested_unnamed_fields_generic() {
 #[derive(Debug, PartialEq, PartialClone)]
 enum Enum {
     Unit,
-    Unnamed(Vec<u8>, #[partial_clone(default)] String, #[partial_clone(partial)] NestedUnnamed),
+    Unnamed(
+        Vec<u8>,
+        #[partial_clone(default)] String,
+        #[partial_clone(partial)] NestedUnnamed,
+    ),
     Named {
         a: Vec<u8>,
         #[partial_clone(default)]
@@ -85,9 +101,17 @@ fn enum_unnamed() {
 #[test]
 fn enum_named() {
     let inner = NestedUnnamed(vec![1, 2, 3], "hello".into());
-    let outer = Enum::Named { a: vec![4, 5, 6], b: "world".into(), c: inner };
+    let outer = Enum::Named {
+        a: vec![4, 5, 6],
+        b: "world".into(),
+        c: inner,
+    };
 
     let expected_inner = NestedUnnamed(vec![1, 2, 3], String::new());
-    let expected_outer = Enum::Named { a: vec![4, 5, 6], b: String::new(), c: expected_inner };
+    let expected_outer = Enum::Named {
+        a: vec![4, 5, 6],
+        b: String::new(),
+        c: expected_inner,
+    };
     assert_eq!(outer.partial_clone(), expected_outer);
 }

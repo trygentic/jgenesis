@@ -12,8 +12,13 @@ pub fn deserialize_default_on_error(input: TokenStream) -> TokenStream {
         "macro does not support structs with generic parameters"
     );
 
-    let ItemStruct { attrs: struct_attrs, vis: struct_vis, ident: struct_ident, fields, .. } =
-        &input;
+    let ItemStruct {
+        attrs: struct_attrs,
+        vis: struct_vis,
+        ident: struct_ident,
+        fields,
+        ..
+    } = &input;
 
     let mut deserialize_fn_definitions = Vec::new();
     let mut new_fields = Vec::new();
@@ -23,13 +28,20 @@ pub fn deserialize_default_on_error(input: TokenStream) -> TokenStream {
             panic!("macro does not support structs with unnamed fields");
         };
 
-        let Field { attrs: field_attrs, vis: field_vis, ty: field_ty, .. } = &field;
+        let Field {
+            attrs: field_attrs,
+            vis: field_vis,
+            ty: field_ty,
+            ..
+        } = &field;
 
         let deserialize_fn_ident =
             format_ident!("__deserialize_{struct_ident}_{field_ident}_default_on_error");
 
-        let cfg_attrs: Vec<_> =
-            field_attrs.iter().filter(|attr| attr.path().is_ident("cfg")).collect();
+        let cfg_attrs: Vec<_> = field_attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("cfg"))
+            .collect();
         deserialize_fn_definitions.push(quote! {
             #(#cfg_attrs)*
             fn #deserialize_fn_ident<'de, D>(deserializer: D) -> ::std::result::Result<#field_ty, D::Error>

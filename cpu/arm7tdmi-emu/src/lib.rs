@@ -307,7 +307,9 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
             );
         } else {
             // Thumb
-            self.prefetch[1] = bus.fetch_opcode_halfword(self.registers.r[15], fetch_cycle).into();
+            self.prefetch[1] = bus
+                .fetch_opcode_halfword(self.registers.r[15], fetch_cycle)
+                .into();
             self.registers.r[15] = self.registers.r[15].wrapping_add(2);
 
             log::trace!(
@@ -342,7 +344,10 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
         let spsr = match self.registers.cpsr.mode.spsr(&mut self.registers) {
             Some(spsr) => *spsr,
             None => {
-                log::warn!("Attempted to read SPSR in mode {:?}", self.registers.cpsr.mode);
+                log::warn!(
+                    "Attempted to read SPSR in mode {:?}",
+                    self.registers.cpsr.mode
+                );
                 return;
             }
         };
@@ -356,7 +361,10 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
             return;
         }
 
-        log::trace!("Changing CPU mode to {new_mode:?} from {:?}", self.registers.cpsr.mode);
+        log::trace!(
+            "Changing CPU mode to {new_mode:?} from {:?}",
+            self.registers.cpsr.mode
+        );
 
         // Bank R13 and R14, as well as R8-12 if changing out of FIQ mode
         match self.registers.cpsr.mode {
@@ -385,7 +393,9 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
                 self.registers.r14_fiq = self.registers.r[14];
 
                 // Bank and update R8-12 if switching out of FIQ mode
-                self.registers.fiq_r_8_12.copy_from_slice(&self.registers.r[8..13]);
+                self.registers
+                    .fiq_r_8_12
+                    .copy_from_slice(&self.registers.r[8..13]);
                 self.registers.r[8..13].copy_from_slice(&self.registers.other_r_8_12);
             }
             CpuMode::Illegal => {
@@ -420,7 +430,9 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
             }
             CpuMode::Fiq => {
                 // Bank and update R8-12 if switching into FIQ mode
-                self.registers.other_r_8_12.copy_from_slice(&self.registers.r[8..13]);
+                self.registers
+                    .other_r_8_12
+                    .copy_from_slice(&self.registers.r[8..13]);
                 self.registers.r[8..13].copy_from_slice(&self.registers.fiq_r_8_12);
 
                 self.registers.r[13] = self.registers.r13_fiq;

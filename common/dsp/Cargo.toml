@@ -1,15 +1,14 @@
 [package]
+license = "GPL-3.0-only"
 name = "dsp"
-version = { workspace = true }
+version = "0.14.1"
 edition = "2024"
 
 [dependencies]
-bincode = { workspace = true }
-log = { workspace = true }
-num = { workspace = true }
+bincode = { version = "2" }
+log = { version = "0.4" }
+num = { version = "0.4" }
 
 [dev-dependencies]
-rand = { workspace = true }
+rand = { version = "0.10" }
 
-[lints]
-workspace = true

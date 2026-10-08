@@ -107,7 +107,12 @@ impl CheatByteOverridesU16Address {
         self.address_bitset.fill(0);
         self.overrides.clear();
 
-        for &ByteCheatCodeU16Address { address, value, reference } in cheat_codes {
+        for &ByteCheatCodeU16Address {
+            address,
+            value,
+            reference,
+        } in cheat_codes
+        {
             self.address_bitset[(address / 64) as usize] |= 1 << (address & 63);
             self.overrides.insert(address, (value, reference));
         }
@@ -119,7 +124,11 @@ impl CheatByteOverridesU16Address {
             return None;
         }
 
-        if !self.address_bitset.get((address / 64) as usize)?.bit((address & 63) as u8) {
+        if !self
+            .address_bitset
+            .get((address / 64) as usize)?
+            .bit((address & 63) as u8)
+        {
             return None;
         }
 

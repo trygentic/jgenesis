@@ -59,7 +59,13 @@ pub struct SuperScopeState {
 
 impl Default for SuperScopeState {
     fn default() -> Self {
-        Self { fire: false, cursor: false, pause: false, turbo: true, position: None }
+        Self {
+            fire: false,
+            cursor: false,
+            pause: false,
+            turbo: true,
+            position: None,
+        }
     }
 }
 
@@ -127,7 +133,10 @@ pub struct SnesInputs {
 
 impl Default for SnesInputs {
     fn default() -> Self {
-        Self { p1: SnesController::Gamepad(SnesJoypadState::default()), p2: SnesController::None }
+        Self {
+            p1: SnesController::Gamepad(SnesJoypadState::default()),
+            p2: SnesController::None,
+        }
     }
 }
 
@@ -165,7 +174,10 @@ impl MappableInputs<SnesButton> for SnesInputs {
                             y,
                             display_info,
                         );
-                    log::debug!("Set Super Scope position to {:?}", super_scope_state.position);
+                    log::debug!(
+                        "Set Super Scope position to {:?}",
+                        super_scope_state.position
+                    );
                 }
                 _ => {}
             }
@@ -198,10 +210,17 @@ impl MappableInputs<SnesButton> for SnesInputs {
             Player::Two => &self.p2,
             _ => return None,
         };
-        let SnesController::SuperScope(super_scope_state) = controller else { return None };
+        let SnesController::SuperScope(super_scope_state) = controller else {
+            return None;
+        };
 
-        let text =
-            format!("Super Scope Turbo: {}", if super_scope_state.turbo { "On" } else { "Off" });
-        Some(Modal { id: Some("super_scope_turbo".into()), text })
+        let text = format!(
+            "Super Scope Turbo: {}",
+            if super_scope_state.turbo { "On" } else { "Off" }
+        );
+        Some(Modal {
+            id: Some("super_scope_turbo".into()),
+            text,
+        })
     }
 }

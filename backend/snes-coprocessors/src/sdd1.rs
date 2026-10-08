@@ -120,10 +120,16 @@ impl Sdd1 {
     fn read_register(&self, offset: u32) -> Option<u8> {
         match offset {
             0x4800 => Some(
-                (0..8).map(|i| u8::from(self.dma_enabled_1[i]) << i).reduce(|a, b| a | b).unwrap(),
+                (0..8)
+                    .map(|i| u8::from(self.dma_enabled_1[i]) << i)
+                    .reduce(|a, b| a | b)
+                    .unwrap(),
             ),
             0x4801 => Some(
-                (0..8).map(|i| u8::from(self.dma_enabled_2[i]) << i).reduce(|a, b| a | b).unwrap(),
+                (0..8)
+                    .map(|i| u8::from(self.dma_enabled_2[i]) << i)
+                    .reduce(|a, b| a | b)
+                    .unwrap(),
             ),
             0x4802 | 0x4803 => Some(0x00),
             0x4804 => Some((self.mmc.bank_c_base_addr >> 20) as u8),
@@ -207,7 +213,10 @@ impl Sdd1 {
     pub fn notify_dma_start(&mut self, channel: u8, source_address: u32) {
         if !self.dma_enabled_1[channel as usize]
             || !self.dma_enabled_2[channel as usize]
-            || self.mmc.map_rom_address(source_address, self.rom.len() as u32).is_none()
+            || self
+                .mmc
+                .map_rom_address(source_address, self.rom.len() as u32)
+                .is_none()
         {
             self.dma_in_progress = false;
             return;

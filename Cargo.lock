@@ -2061,6 +2061,7 @@ dependencies = [
  "bincode",
  "bytemuck",
  "clap",
+ "getrandom 0.4.3",
  "jgenesis-proc-macros",
  "js-sys",
  "log",

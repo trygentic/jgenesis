@@ -14,7 +14,10 @@ struct PixelBuffer {
 
 impl PixelBuffer {
     fn new() -> Self {
-        Self { pixels: [0; 8], valid_bits: 0 }
+        Self {
+            pixels: [0; 8],
+            valid_bits: 0,
+        }
     }
 
     fn write_pixel(&mut self, i: u8, color: u8) {
@@ -82,7 +85,10 @@ pub(super) fn cmode(memory_type: MemoryType, gsu: &mut GraphicsSupportUnit) -> u
 
     log::trace!("Plot transparent pixels: {}", gsu.plot_transparent_pixels);
     log::trace!("Dithering on: {}", gsu.dither_on);
-    log::trace!("High nibble only in color writes: {}", gsu.por_high_nibble_flag);
+    log::trace!(
+        "High nibble only in color writes: {}",
+        gsu.por_high_nibble_flag
+    );
     log::trace!("Freeze color high nibble: {}", gsu.por_freeze_high_nibble);
     log::trace!("Force OBJ mode: {}", gsu.force_obj_mode);
 
@@ -142,7 +148,11 @@ pub(super) fn plot(memory_type: MemoryType, gsu: &mut GraphicsSupportUnit, ram: 
     gsu.plot_state.last_coarse_x = coarse_x;
     gsu.plot_state.last_y = y;
 
-    let color = if gsu.dither_on && (x.bit(0) ^ y.bit(0)) { gsu.color >> 4 } else { gsu.color };
+    let color = if gsu.dither_on && (x.bit(0) ^ y.bit(0)) {
+        gsu.color >> 4
+    } else {
+        gsu.color
+    };
     let is_transparent = if gsu.por_freeze_high_nibble {
         // If high nibble is frozen, transparency check only looks at the lowest 2/4 bits even in
         // 256-color mode
@@ -283,7 +293,11 @@ fn compute_tile_addr(gsu: &GraphicsSupportUnit, x: u8, y: u8, ram_len: usize) ->
     let tile_x: u16 = (x / 8).into();
     let tile_y: u16 = (y / 8).into();
 
-    let screen_height = if gsu.force_obj_mode { ScreenHeight::ObjMode } else { gsu.screen_height };
+    let screen_height = if gsu.force_obj_mode {
+        ScreenHeight::ObjMode
+    } else {
+        gsu.screen_height
+    };
 
     let tile_number = match screen_height {
         ScreenHeight::Bg128Pixel => tile_x * 0x10 + tile_y,

@@ -120,7 +120,11 @@ impl SuperFx {
 
     #[inline]
     pub fn tick(&mut self, master_cycles_elapsed: u64) {
-        self.gsu.tick(self.gsu_overclock_factor * master_cycles_elapsed, &self.rom, &mut self.ram);
+        self.gsu.tick(
+            self.gsu_overclock_factor * master_cycles_elapsed,
+            &self.rom,
+            &mut self.ram,
+        );
     }
 
     #[inline]

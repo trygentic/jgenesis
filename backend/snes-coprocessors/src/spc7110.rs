@@ -50,8 +50,12 @@ impl Spc7110 {
 
         // Chipset byte of $F9 indicates SPC7110 + RTC-4513 (only used by Tengai Makyou Zero)
         let has_rtc = rom[0xFFD6] == 0xF9;
-        let rtc =
-            has_rtc.then(|| save_writer.load_serialized("rtc").ok().unwrap_or_else(Rtc4513::new));
+        let rtc = has_rtc.then(|| {
+            save_writer
+                .load_serialized("rtc")
+                .ok()
+                .unwrap_or_else(Rtc4513::new)
+        });
 
         log::info!("SPC7110 has RTC-4513: {}", rtc.is_some());
 
@@ -172,7 +176,10 @@ impl Spc7110 {
             0x480C => Some(self.decompressor.read_status()),
             0x4809 => Some(self.decompressor.length_counter.lsb()),
             0x480A => Some(self.decompressor.length_counter.msb()),
-            0x4810 => Some(self.registers.read_direct_data_rom_r4810(&self.rom[DATA_ROM_START..])),
+            0x4810 => Some(
+                self.registers
+                    .read_direct_data_rom_r4810(&self.rom[DATA_ROM_START..]),
+            ),
             0x4811 => Some(self.registers.direct_data_rom_base.low_byte()),
             0x4812 => Some(self.registers.direct_data_rom_base.mid_byte()),
             0x4813 => Some(self.registers.direct_data_rom_base.high_byte()),
@@ -182,7 +189,10 @@ impl Spc7110 {
             0x4817 => Some(self.registers.direct_data_rom_step.msb()),
             // $4818: Direct data ROM mode; reading from this register has unknown functionality
             0x4818 => Some(0x00),
-            0x481A => Some(self.registers.read_direct_data_rom_r481a(&self.rom[DATA_ROM_START..])),
+            0x481A => Some(
+                self.registers
+                    .read_direct_data_rom_r481a(&self.rom[DATA_ROM_START..]),
+            ),
             0x4820..=0x4823 => Some(self.registers.read_dividend(address)),
             0x4824 => Some(self.registers.math.multiplier.lsb()),
             0x4825 => Some(self.registers.math.multiplier.msb()),
@@ -209,7 +219,10 @@ impl Spc7110 {
 
     #[allow(clippy::match_same_arms)]
     fn write_register(&mut self, address: u32, value: u8) {
-        log::trace!("SPC7110 register write {:04X} {value:02X}", address & 0xFFFF);
+        log::trace!(
+            "SPC7110 register write {:04X} {value:02X}",
+            address & 0xFFFF
+        );
 
         match address & 0xFFFF {
             0x4801 => self.decompressor.write_rom_directory_base_low(value),
@@ -218,7 +231,8 @@ impl Spc7110 {
             0x4804 => self.decompressor.rom_directory_index = value,
             0x4805 => self.decompressor.write_target_offset_low(value),
             0x4806 => {
-                self.decompressor.write_target_offset_high(value, &self.rom[DATA_ROM_START..]);
+                self.decompressor
+                    .write_target_offset_high(value, &self.rom[DATA_ROM_START..]);
             }
             // $4807: Unknown functionality, reportedly DMA channel?
             0x4807 => {}

@@ -55,7 +55,9 @@ fn sbc_bcd(registers: &mut Registers, value: u8) {
         al = (al.wrapping_sub(0x06) & 0x0F).wrapping_sub(0x10);
     }
 
-    let mut a = u16::from(original_a & 0xF0).wrapping_sub(u16::from(value & 0xF0)).wrapping_add(al);
+    let mut a = u16::from(original_a & 0xF0)
+        .wrapping_sub(u16::from(value & 0xF0))
+        .wrapping_add(al);
     if a.sign_bit() {
         a = a.wrapping_sub(0x60);
     }

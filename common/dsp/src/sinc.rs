@@ -64,7 +64,11 @@ impl SampleRingBuffer {
 
         let buffer_len = Self::CAPACITY_MULTIPLIER * required_samples;
 
-        Self { buffer: vec![0.0; buffer_len], idx: Self::EXTRA_SPACE, len: 0 }
+        Self {
+            buffer: vec![0.0; buffer_len],
+            idx: Self::EXTRA_SPACE,
+            len: 0,
+        }
     }
 
     fn ensure_capacity(&mut self, required_samples: usize) {
@@ -184,19 +188,30 @@ impl<const CHANNELS: usize, Kernel: SincKernel> SincResampler<CHANNELS, Kernel> 
             let idx_float = scale * self.input_counter.fract();
             interpolation_idx_float_to_fixed_point(idx_float, oversample_factor)
         };
-        let l_sum =
-            sum_wing::<true, _>(fir, interpolation_idx, step, input_slices, n + self.input[0].idx);
+        let l_sum = sum_wing::<true, _>(
+            fir,
+            interpolation_idx,
+            step,
+            input_slices,
+            n + self.input[0].idx,
+        );
 
         // Sum the right wing of the input window / left wing of the windowed sinc
         let interpolation_idx = {
             let idx_float = scale * (1.0 - self.input_counter.fract());
             interpolation_idx_float_to_fixed_point(idx_float, oversample_factor)
         };
-        let r_sum =
-            sum_wing::<false, _>(fir, interpolation_idx, step, input_slices, n + self.input[0].idx);
+        let r_sum = sum_wing::<false, _>(
+            fir,
+            interpolation_idx,
+            step,
+            input_slices,
+            n + self.input[0].idx,
+        );
 
         let volume = scale * f64::from(oversample_factor);
-        self.output.push_back(array::from_fn(|ch| volume * (l_sum[ch] + r_sum[ch])));
+        self.output
+            .push_back(array::from_fn(|ch| volume * (l_sum[ch] + r_sum[ch])));
     }
 
     #[inline]
@@ -362,7 +377,11 @@ fn sum_wing_avx2<const REVERSE: bool, const CHANNELS: usize>(
     // SAFETY: Later code assumes all input slices are the same length and that n < input.len()
     assert!(n < input[0].len());
     if CHANNELS > 1 {
-        assert!(input[1..].iter().all(|channel_input| channel_input.len() == input[0].len()));
+        assert!(
+            input[1..]
+                .iter()
+                .all(|channel_input| channel_input.len() == input[0].len())
+        );
     }
 
     let mut sums = [_mm256_setzero_pd(); CHANNELS];
@@ -405,8 +424,10 @@ fn sum_wing_avx2<const REVERSE: bool, const CHANNELS: usize>(
         let linear_factor_numerators =
             _mm256_cvtepi32_pd(_mm256_castsi256_si128(linear_factor_numerators));
 
-        let linear_factors =
-            _mm256_mul_pd(linear_factor_numerators, _mm256_set1_pd(LINEAR_FACTOR_MULTIPLIER));
+        let linear_factors = _mm256_mul_pd(
+            linear_factor_numerators,
+            _mm256_set1_pd(LINEAR_FACTOR_MULTIPLIER),
+        );
 
         // SAFETY: Mask is used to prevent out-of-bounds loads
         // Load as f64s to pull in each coefficient followed by the next coefficient
@@ -444,7 +465,10 @@ fn sum_wing_avx2<const REVERSE: bool, const CHANNELS: usize>(
             if overflowed {
                 // Should never happen, but don't go out of bounds if it does
                 cold_path();
-                panic!("input array index out of bounds; idx={idx}, len={}", input[0].len());
+                panic!(
+                    "input array index out of bounds; idx={idx}, len={}",
+                    input[0].len()
+                );
             }
             idx
         } else {
@@ -452,7 +476,11 @@ fn sum_wing_avx2<const REVERSE: bool, const CHANNELS: usize>(
             if idx + 3 >= input[0].len() {
                 // Should never happen, but don't go out of bounds if it does
                 cold_path();
-                panic!("input array index out of bounds; idx={}, len={}", idx + 3, input[0].len());
+                panic!(
+                    "input array index out of bounds; idx={}, len={}",
+                    idx + 3,
+                    input[0].len()
+                );
             }
             idx
         };
@@ -494,7 +522,11 @@ fn sum_wing_avx512<const REVERSE: bool, const CHANNELS: usize>(
     // SAFETY: Later code assumes all input slices are the same length and that n < input.len()
     assert!(n < input[0].len());
     if CHANNELS > 1 {
-        assert!(input[1..].iter().all(|channel_input| channel_input.len() == input[0].len()));
+        assert!(
+            input[1..]
+                .iter()
+                .all(|channel_input| channel_input.len() == input[0].len())
+        );
     }
 
     let mut sums = [_mm512_setzero_pd(); CHANNELS];
@@ -560,7 +592,10 @@ fn sum_wing_avx512<const REVERSE: bool, const CHANNELS: usize>(
             if overflowed {
                 // Should never happen, but don't go out of bounds if it does
                 cold_path();
-                panic!("input array index out of bounds; idx={idx}, len={}", input[0].len());
+                panic!(
+                    "input array index out of bounds; idx={idx}, len={}",
+                    input[0].len()
+                );
             }
             idx
         } else {
@@ -568,7 +603,11 @@ fn sum_wing_avx512<const REVERSE: bool, const CHANNELS: usize>(
             if idx + 7 >= input[0].len() {
                 // Should never happen, but don't go out of bounds if it does
                 cold_path();
-                panic!("input array index out of bounds; idx={}, len={}", idx + 7, input[0].len());
+                panic!(
+                    "input array index out of bounds; idx={}, len={}",
+                    idx + 7,
+                    input[0].len()
+                );
             }
             idx
         };
@@ -693,10 +732,22 @@ mod tests {
                 n,
             );
 
-            let avx_reverse =
-                sum_wing_avx_fn(true, fir, interpolation_idx, step, [buffer.buffer.as_slice()], n);
-            let avx_forward =
-                sum_wing_avx_fn(false, fir, interpolation_idx, step, [buffer.buffer.as_slice()], n);
+            let avx_reverse = sum_wing_avx_fn(
+                true,
+                fir,
+                interpolation_idx,
+                step,
+                [buffer.buffer.as_slice()],
+                n,
+            );
+            let avx_forward = sum_wing_avx_fn(
+                false,
+                fir,
+                interpolation_idx,
+                step,
+                [buffer.buffer.as_slice()],
+                n,
+            );
 
             assert!(
                 (non_avx_reverse[0] - avx_reverse[0]).abs() < 1e-9,

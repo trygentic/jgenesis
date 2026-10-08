@@ -319,7 +319,11 @@ impl Upd77c25 {
     #[must_use]
     pub fn read_ram(&self, address: u32) -> u8 {
         let word = self.ram[((address >> 1) & 0x7FF) as usize];
-        if !address.bit(0) { word.lsb() } else { word.msb() }
+        if !address.bit(0) {
+            word.lsb()
+        } else {
+            word.msb()
+        }
     }
 
     #[inline]
@@ -392,12 +396,22 @@ fn convert_rom(rom: &[u8], variant: Upd77c25Variant) -> (Vec<u32>, Vec<u16>) {
 
 // Convert program ROM from bytes to 24-bit opcodes
 fn convert_program_rom(program_rom: &[u8], endianness: Endianness) -> Vec<u32> {
-    program_rom.as_chunks::<3>().0.iter().map(|&chunk| endianness.chunk_to_u32(chunk)).collect()
+    program_rom
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|&chunk| endianness.chunk_to_u32(chunk))
+        .collect()
 }
 
 // Convert data ROM from bytes to 16-bit words
 fn convert_to_u16(bytes: &[u8], endianness: Endianness) -> Vec<u16> {
-    bytes.as_chunks::<2>().0.iter().map(|&chunk| endianness.chunk_to_u16(chunk)).collect()
+    bytes
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&chunk| endianness.chunk_to_u16(chunk))
+        .collect()
 }
 
 // All program ROMs used for this chip contain the opcode $97C00x in the first 4 opcodes, where

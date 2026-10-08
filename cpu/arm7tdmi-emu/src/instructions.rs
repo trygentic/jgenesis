@@ -22,7 +22,12 @@ struct ConditionCodes {
 
 impl ConditionCodes {
     fn logical(value: u32, shifter_out: bool, overflow: bool) -> Self {
-        Self { sign: value.bit(31), zero: value == 0, carry: shifter_out, overflow }
+        Self {
+            sign: value.bit(31),
+            zero: value == 0,
+            carry: shifter_out,
+            overflow,
+        }
     }
 }
 
@@ -161,7 +166,10 @@ impl AluOp {
 
     // TST, TEQ, CMP, CMN
     fn is_test(self) -> bool {
-        matches!(self, Self::Test | Self::TestEqual | Self::Compare | Self::CompareNegate)
+        matches!(
+            self,
+            Self::Test | Self::TestEqual | Self::Compare | Self::CompareNegate
+        )
     }
 }
 
@@ -220,7 +228,11 @@ struct ArmDecode<Bus: BusInterface> {
 
 impl<Bus: BusInterface> ArmDecode<Bus> {
     fn new(mask: u32, target: u32, op_fn: ArmFn<Bus>) -> Self {
-        Self { mask, target, op_fn }
+        Self {
+            mask,
+            target,
+            op_fn,
+        }
     }
 }
 
@@ -253,7 +265,11 @@ struct ThumbDecode<Bus: BusInterface> {
 
 impl<Bus: BusInterface> ThumbDecode<Bus> {
     const fn new(mask: u16, target: u16, op_fn: ThumbFn<Bus>) -> Self {
-        Self { mask, target, op_fn }
+        Self {
+            mask,
+            target,
+            op_fn,
+        }
     }
 }
 
@@ -312,7 +328,12 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
 
         array::from_fn(|opcode_mask| {
             let opcode_mask = opcode_mask as u32;
-            for &ArmDecode { mask, target, op_fn } in decode_table {
+            for &ArmDecode {
+                mask,
+                target,
+                op_fn,
+            } in decode_table
+            {
                 if opcode_mask & mask == target {
                     return op_fn;
                 }
@@ -371,7 +392,12 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
         array::from_fn(|opcode_mask| {
             let opcode_mask = opcode_mask as u16;
 
-            for &ThumbDecode { mask, target, op_fn } in decode_table {
+            for &ThumbDecode {
+                mask,
+                target,
+                op_fn,
+            } in decode_table
+            {
                 if opcode_mask & mask == target {
                     return op_fn;
                 }
@@ -507,7 +533,9 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
 
         match size {
             LoadSize::Word => {
-                let value = bus.read_word(address, MemoryCycle::N).rotate_right(8 * (address & 3));
+                let value = bus
+                    .read_word(address, MemoryCycle::N)
+                    .rotate_right(8 * (address & 3));
                 bus.write_word(address, self.read_register(rm), MemoryCycle::S);
                 self.registers.r[rd as usize] = value;
             }
@@ -601,12 +629,23 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
         bus: &mut Bus,
     ) {
         let (operand2, shifter_out) = if rotation != 0 {
-            (immediate.rotate_right(rotation), immediate.bit((rotation - 1) as u8))
+            (
+                immediate.rotate_right(rotation),
+                immediate.bit((rotation - 1) as u8),
+            )
         } else {
             (immediate, self.registers.cpsr.carry)
         };
 
-        self.alu(op, self.read_register(rn), rd, set_condition_codes, operand2, shifter_out, bus);
+        self.alu(
+            op,
+            self.read_register(rn),
+            rd,
+            set_condition_codes,
+            operand2,
+            shifter_out,
+            bus,
+        );
     }
 
     #[inline]
@@ -627,7 +666,15 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
         let (operand2, shifter_out) =
             apply_immediate_shift(value, shift_type, shift, self.registers.cpsr.carry);
 
-        self.alu(op, self.read_register(rn), rd, set_condition_codes, operand2, shifter_out, bus);
+        self.alu(
+            op,
+            self.read_register(rn),
+            rd,
+            set_condition_codes,
+            operand2,
+            shifter_out,
+            bus,
+        );
     }
 
     #[inline]
@@ -662,7 +709,10 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
                 },
                 ShiftType::ArithmeticRight => {
                     if shift < 32 {
-                        (((value as i32) >> shift) as u32, value.bit((shift - 1) as u8))
+                        (
+                            ((value as i32) >> shift) as u32,
+                            value.bit((shift - 1) as u8),
+                        )
                     } else {
                         (((value as i32) >> 31) as u32, value.bit(31))
                     }
@@ -687,7 +737,15 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
         // Register specified shift adds 1I
         bus.internal_cycles(1);
 
-        self.alu(op, operand1, rd, set_condition_codes, operand2, shifter_out, bus);
+        self.alu(
+            op,
+            operand1,
+            rd,
+            set_condition_codes,
+            operand2,
+            shifter_out,
+            bus,
+        );
     }
 
     #[inline]
@@ -705,11 +763,17 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
         let (result, codes) = match op {
             AluOp::And | AluOp::Test => {
                 let result = operand1 & operand2;
-                (result, ConditionCodes::logical(result, shifter_out, self.registers.cpsr.overflow))
+                (
+                    result,
+                    ConditionCodes::logical(result, shifter_out, self.registers.cpsr.overflow),
+                )
             }
             AluOp::ExclusiveOr | AluOp::TestEqual => {
                 let result = operand1 ^ operand2;
-                (result, ConditionCodes::logical(result, shifter_out, self.registers.cpsr.overflow))
+                (
+                    result,
+                    ConditionCodes::logical(result, shifter_out, self.registers.cpsr.overflow),
+                )
             }
             AluOp::Subtract | AluOp::Compare => alu_add(operand1, !operand2, true),
             AluOp::ReverseSubtract => alu_add(operand2, !operand1, true),
@@ -719,7 +783,10 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
             AluOp::ReverseSubtractCarry => alu_add(operand2, !operand1, self.registers.cpsr.carry),
             AluOp::Or => {
                 let result = operand1 | operand2;
-                (result, ConditionCodes::logical(result, shifter_out, self.registers.cpsr.overflow))
+                (
+                    result,
+                    ConditionCodes::logical(result, shifter_out, self.registers.cpsr.overflow),
+                )
             }
             AluOp::Move => (
                 operand2,
@@ -727,7 +794,10 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
             ),
             AluOp::BitClear => {
                 let result = operand1 & !operand2;
-                (result, ConditionCodes::logical(result, shifter_out, self.registers.cpsr.overflow))
+                (
+                    result,
+                    ConditionCodes::logical(result, shifter_out, self.registers.cpsr.overflow),
+                )
             }
             AluOp::MoveNegate => (
                 !operand2,
@@ -814,7 +884,16 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
         let accumulate = opcode.bit(21);
         let signed = opcode.bit(22);
 
-        self.multiply_long(rm, rs, rdlo, rdhi, set_condition_codes, accumulate, signed, bus);
+        self.multiply_long(
+            rm,
+            rs,
+            rdlo,
+            rdhi,
+            set_condition_codes,
+            accumulate,
+            signed,
+            bus,
+        );
     }
 
     #[inline]
@@ -994,7 +1073,9 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
             return self.arm_swap(opcode, bus);
         };
 
-        self.load_halfword::<LOAD>(rn, rd, offset, load_type, indexing, index_op, write_back, bus);
+        self.load_halfword::<LOAD>(
+            rn, rd, offset, load_type, indexing, index_op, write_back, bus,
+        );
     }
 
     #[inline]
@@ -1118,7 +1199,10 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
 
             if LOAD && need_write_back {
                 self.registers.r[rn as usize] = final_addr;
-                log::trace!("  Wrote back to R{rn}: {:08X}", self.registers.r[rn as usize]);
+                log::trace!(
+                    "  Wrote back to R{rn}: {:08X}",
+                    self.registers.r[rn as usize]
+                );
                 need_write_back = false;
             }
 
@@ -1156,7 +1240,10 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
 
             if !LOAD && need_write_back {
                 self.registers.r[rn as usize] = final_addr;
-                log::trace!("  Wrote back to R{rn}: {:08X}", self.registers.r[rn as usize]);
+                log::trace!(
+                    "  Wrote back to R{rn}: {:08X}",
+                    self.registers.r[rn as usize]
+                );
                 need_write_back = false;
             }
         }
@@ -1201,7 +1288,11 @@ impl<Bus: BusInterface> Arm7Tdmi<Bus> {
         let rd = opcode & 7;
         let rs = (opcode >> 3) & 7;
         let rn = (opcode >> 6) & 7;
-        let alu_op = if opcode.bit(9) { AluOp::Subtract } else { AluOp::Add };
+        let alu_op = if opcode.bit(9) {
+            AluOp::Subtract
+        } else {
+            AluOp::Add
+        };
 
         let immediate = opcode.bit(10);
         if immediate {
@@ -1685,9 +1776,10 @@ fn apply_immediate_shift(
         (ShiftType::LogicalRight, 0) => (0, value.bit(31)),
         (ShiftType::LogicalRight, _) => (value >> shift, value.bit((shift - 1) as u8)),
         (ShiftType::ArithmeticRight, 0) => (((value as i32) >> 31) as u32, value.bit(31)),
-        (ShiftType::ArithmeticRight, _) => {
-            (((value as i32) >> shift) as u32, value.bit((shift - 1) as u8))
-        }
+        (ShiftType::ArithmeticRight, _) => (
+            ((value as i32) >> shift) as u32,
+            value.bit((shift - 1) as u8),
+        ),
         (ShiftType::RotateRight, 0) => {
             // RRX: Rotate right through carry
             let result = (value >> 1) | (u32::from(carry_in) << 31);
@@ -1707,7 +1799,15 @@ fn alu_add(operand1: u32, operand2: u32, carry_in: bool) -> (u32, ConditionCodes
     let bit_30_carry = (operand1 & 0x7FFFFFFF) + (operand2 & 0x7FFFFFFF) + carry_in >= 0x80000000;
     let overflow = bit_30_carry != carry;
 
-    (sum, ConditionCodes { sign: sum.bit(31), zero: sum == 0, carry, overflow })
+    (
+        sum,
+        ConditionCodes {
+            sign: sum.bit(31),
+            zero: sum == 0,
+            carry,
+            overflow,
+        },
+    )
 }
 
 fn get_user_register(registers: &mut Registers, r: u32) -> &mut u32 {

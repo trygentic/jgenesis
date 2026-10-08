@@ -97,14 +97,23 @@ pub struct DspLoromPortAddresses {
 impl DspLoromPortAddresses {
     // PCB SHVC-1B0N-01
     // DSP-1 or DSP-4 with no SRAM and at most 1MB of ROM
-    const DSP_1_4: Self = Self { banks: 0x30..0x40, offset_mask: 0x8000 };
+    const DSP_1_4: Self = Self {
+        banks: 0x30..0x40,
+        offset_mask: 0x8000,
+    };
 
     // PCB SHVC-2B3B-01
     // DSP-1 with 8KB SRAM and up to 2MB of ROM
-    const DSP_1_LARGE: Self = Self { banks: 0x60..0x70, offset_mask: 0x0000 };
+    const DSP_1_LARGE: Self = Self {
+        banks: 0x60..0x70,
+        offset_mask: 0x0000,
+    };
 
     // PCB SHVC-1B5B-01 (DSP-2 w/ 32KB SRAM) or SHVC-1B3B-01 (DSP-3 w/ 8KB SRAM)
-    const DSP_2_3: Self = Self { banks: 0x20..0x40, offset_mask: 0x8000 };
+    const DSP_2_3: Self = Self {
+        banks: 0x20..0x40,
+        offset_mask: 0x8000,
+    };
 
     fn from_metadata(rom_len: usize, sram_len: usize) -> Self {
         if rom_len > 1024 * 1024 {
@@ -292,32 +301,49 @@ impl Cartridge {
             log::info!("Detected {st01x_variant} coprocessor");
 
             let st01x_rom_fn = match st01x_variant {
-                St01xVariant::St010 => {
-                    coprocessor_roms.st010.as_ref().ok_or(SnesLoadError::MissingSt010Rom)?
-                }
-                St01xVariant::St011 => {
-                    coprocessor_roms.st011.as_ref().ok_or(SnesLoadError::MissingSt011Rom)?
-                }
+                St01xVariant::St010 => coprocessor_roms
+                    .st010
+                    .as_ref()
+                    .ok_or(SnesLoadError::MissingSt010Rom)?,
+                St01xVariant::St011 => coprocessor_roms
+                    .st011
+                    .as_ref()
+                    .ok_or(SnesLoadError::MissingSt011Rom)?,
             };
 
             let st01x_rom = st01x_rom_fn()
                 .map_err(|(source, path)| SnesLoadError::CoprocessorRomLoad { source, path })?;
             let upd77c25 = Upd77c25::new(&st01x_rom, st01x_variant.into(), &sram, timing_mode);
 
-            return Ok((Self::St01x { rom: Rom(rom), upd77c25 }, timing_mode));
+            return Ok((
+                Self::St01x {
+                    rom: Rom(rom),
+                    upd77c25,
+                },
+                timing_mode,
+            ));
         }
 
         let is_st018 = chipset_byte == 0xF5 && rom[rom_header_addr - 1] == 0x02;
         if is_st018 {
             log::info!("Detected ST018 coprocessor");
 
-            let st018_rom_fn =
-                coprocessor_roms.st018.as_ref().ok_or(SnesLoadError::MissingSt018Rom)?;
+            let st018_rom_fn = coprocessor_roms
+                .st018
+                .as_ref()
+                .ok_or(SnesLoadError::MissingSt018Rom)?;
             let st018_rom = st018_rom_fn()
                 .map_err(|(source, path)| SnesLoadError::CoprocessorRomLoad { source, path })?;
             let st018 = St018::new(&st018_rom).map_err(SnesLoadError::St018RomLoad)?;
 
-            return Ok((Self::St018 { rom: Rom(rom), sram, st018 }, timing_mode));
+            return Ok((
+                Self::St018 {
+                    rom: Rom(rom),
+                    sram,
+                    st018,
+                },
+                timing_mode,
+            ));
         }
 
         let rom_checksum = CRC.checksum(&rom);
@@ -334,18 +360,22 @@ impl Cartridge {
             log::info!("Detected DSP coprocessor of type {dsp_variant}");
 
             let dsp_rom_fn = match dsp_variant {
-                DspVariant::Dsp1 => {
-                    coprocessor_roms.dsp1.as_ref().ok_or(SnesLoadError::MissingDsp1Rom)?
-                }
-                DspVariant::Dsp2 => {
-                    coprocessor_roms.dsp2.as_ref().ok_or(SnesLoadError::MissingDsp2Rom)?
-                }
-                DspVariant::Dsp3 => {
-                    coprocessor_roms.dsp3.as_ref().ok_or(SnesLoadError::MissingDsp3Rom)?
-                }
-                DspVariant::Dsp4 => {
-                    coprocessor_roms.dsp4.as_ref().ok_or(SnesLoadError::MissingDsp4Rom)?
-                }
+                DspVariant::Dsp1 => coprocessor_roms
+                    .dsp1
+                    .as_ref()
+                    .ok_or(SnesLoadError::MissingDsp1Rom)?,
+                DspVariant::Dsp2 => coprocessor_roms
+                    .dsp2
+                    .as_ref()
+                    .ok_or(SnesLoadError::MissingDsp2Rom)?,
+                DspVariant::Dsp3 => coprocessor_roms
+                    .dsp3
+                    .as_ref()
+                    .ok_or(SnesLoadError::MissingDsp3Rom)?,
+                DspVariant::Dsp4 => coprocessor_roms
+                    .dsp4
+                    .as_ref()
+                    .ok_or(SnesLoadError::MissingDsp4Rom)?,
             };
 
             let dsp_rom = dsp_rom_fn()
@@ -363,20 +393,36 @@ impl Cartridge {
                     );
 
                     Ok((
-                        Self::DspLoRom { rom: Rom(rom), sram, upd77c25, port_addresses },
+                        Self::DspLoRom {
+                            rom: Rom(rom),
+                            sram,
+                            upd77c25,
+                            port_addresses,
+                        },
                         timing_mode,
                     ))
                 }
-                CartridgeType::HiRom => {
-                    Ok((Self::DspHiRom { rom: Rom(rom), sram, upd77c25 }, timing_mode))
-                }
+                CartridgeType::HiRom => Ok((
+                    Self::DspHiRom {
+                        rom: Rom(rom),
+                        sram,
+                        upd77c25,
+                    },
+                    timing_mode,
+                )),
                 _ => unreachable!("nested match expressions"),
             };
         }
 
         let cartridge = match cartridge_type {
-            CartridgeType::LoRom => Self::LoRom { rom: Rom(rom), sram },
-            CartridgeType::HiRom => Self::HiRom { rom: Rom(rom), sram },
+            CartridgeType::LoRom => Self::LoRom {
+                rom: Rom(rom),
+                sram,
+            },
+            CartridgeType::HiRom => Self::HiRom {
+                rom: Rom(rom),
+                sram,
+            },
             CartridgeType::ExHiRom => new_exhirom_cartridge(rom, sram, save_writer),
             CartridgeType::Cx4 => Self::Cx4(Cx4::new(rom)),
             CartridgeType::Obc1 => Self::Obc1(Obc1::new(rom, sram)),
@@ -393,10 +439,17 @@ impl Cartridge {
         let bank = (address >> 16) & 0xFF;
         let offset = address & 0xFFFF;
         let (mapped_address, rom, sram) = match self {
-            Self::LoRom { rom, sram } => {
-                (lorom_map_address(address, rom.len() as u32, sram.len() as u32), rom, sram)
-            }
-            Self::DspLoRom { rom, sram, upd77c25, port_addresses } => {
+            Self::LoRom { rom, sram } => (
+                lorom_map_address(address, rom.len() as u32, sram.len() as u32),
+                rom,
+                sram,
+            ),
+            Self::DspLoRom {
+                rom,
+                sram,
+                upd77c25,
+                port_addresses,
+            } => {
                 if port_addresses.is_dsp_port(bank, offset) {
                     return Some(if offset & 0x4000 == 0 {
                         upd77c25.read_data()
@@ -405,21 +458,41 @@ impl Cartridge {
                     });
                 }
 
-                (lorom_map_address(address, rom.len() as u32, sram.len() as u32), rom, sram)
+                (
+                    lorom_map_address(address, rom.len() as u32, sram.len() as u32),
+                    rom,
+                    sram,
+                )
             }
-            Self::HiRom { rom, sram } => {
-                (hirom_map_address(address, rom.len() as u32, sram.len() as u32), rom, sram)
-            }
-            Self::DspHiRom { rom, sram, upd77c25 } => match (bank, offset) {
+            Self::HiRom { rom, sram } => (
+                hirom_map_address(address, rom.len() as u32, sram.len() as u32),
+                rom,
+                sram,
+            ),
+            Self::DspHiRom {
+                rom,
+                sram,
+                upd77c25,
+            } => match (bank, offset) {
                 (0x00..=0x0F | 0x80..=0x8F, 0x6000..=0x6FFF) => return Some(upd77c25.read_data()),
                 (0x00..=0x0F | 0x80..=0x8F, 0x7000..=0x7FFF) => {
                     return Some(upd77c25.read_status());
                 }
-                _ => (hirom_map_address(address, rom.len() as u32, sram.len() as u32), rom, sram),
+                _ => (
+                    hirom_map_address(address, rom.len() as u32, sram.len() as u32),
+                    rom,
+                    sram,
+                ),
             },
-            Self::ExHiRom { rom, sram, srtc, .. } => match (bank, offset, srtc) {
+            Self::ExHiRom {
+                rom, sram, srtc, ..
+            } => match (bank, offset, srtc) {
                 (0x00..=0x3F | 0x80..=0xBF, 0x2800, Some(srtc)) => return Some(srtc.read()),
-                _ => (exhirom_map_address(address, rom.len() as u32, sram.len() as u32), rom, sram),
+                _ => (
+                    exhirom_map_address(address, rom.len() as u32, sram.len() as u32),
+                    rom,
+                    sram,
+                ),
             },
             Self::Cx4(cx4) => return cx4.read(address),
             Self::Obc1(obc1) => return obc1.read(address),
@@ -474,7 +547,12 @@ impl Cartridge {
                     sram[sram_addr as usize] = value;
                 }
             }
-            Self::DspLoRom { rom, sram, upd77c25, port_addresses } => {
+            Self::DspLoRom {
+                rom,
+                sram,
+                upd77c25,
+                port_addresses,
+            } => {
                 if port_addresses.is_dsp_port(bank, offset) {
                     if offset & 0x4000 == 0 {
                         upd77c25.write_data(value);
@@ -496,7 +574,11 @@ impl Cartridge {
                     sram[sram_addr as usize] = value;
                 }
             }
-            Self::DspHiRom { rom, sram, upd77c25 } => match (bank, offset) {
+            Self::DspHiRom {
+                rom,
+                sram,
+                upd77c25,
+            } => match (bank, offset) {
                 (0x00..=0x0F | 0x80..=0x8F, 0x6000..=0x6FFF) => {
                     upd77c25.write_data(value);
                 }
@@ -508,7 +590,9 @@ impl Cartridge {
                     }
                 }
             },
-            Self::ExHiRom { rom, sram, srtc, .. } => match (bank, offset, srtc) {
+            Self::ExHiRom {
+                rom, sram, srtc, ..
+            } => match (bank, offset, srtc) {
                 (0x00..=0x3F | 0x80..=0xBF, 0x2801, Some(srtc)) => srtc.write(value),
                 _ => {
                     if let CartridgeAddress::Sram(sram_addr) =
@@ -578,6 +662,21 @@ impl Cartridge {
             Self::Sdd1(sdd1) => sdd1.take_rom(),
             Self::Spc7110(spc7110) => spc7110.take_rom(),
             Self::SuperFx(sfx) => sfx.take_rom(),
+        }
+    }
+
+    /// lttprs: mutable view of the ROM image for plain (coprocessor-free) cartridges, so the
+    /// host can patch data tables in place (custom player sprites).
+    pub fn rom_mut(&mut self) -> Option<&mut [u8]> {
+        match self {
+            Self::LoRom { rom, .. }
+            | Self::HiRom { rom, .. }
+            | Self::ExHiRom { rom, .. }
+            | Self::DspLoRom { rom, .. }
+            | Self::DspHiRom { rom, .. }
+            | Self::St01x { rom, .. }
+            | Self::St018 { rom, .. } => Some(&mut rom.0),
+            _ => None,
         }
     }
 
@@ -660,12 +759,30 @@ impl Cartridge {
         }
     }
 
+    /// lttprs: mutable SRAM for plain LoROM/HiROM carts (enough for A Link to the Past)
+    pub fn sram_mut(&mut self) -> Option<&mut [u8]> {
+        match self {
+            Self::LoRom { sram, .. }
+            | Self::HiRom { sram, .. }
+            | Self::ExHiRom { sram, .. }
+            | Self::DspLoRom { sram, .. }
+            | Self::DspHiRom { sram, .. }
+                if !sram.is_empty() =>
+            {
+                Some(sram)
+            }
+            _ => None,
+        }
+    }
+
     pub fn write_auxiliary_save_files<S: SaveWriter>(
         &self,
         save_writer: &mut S,
     ) -> Result<(), S::Err> {
         match self {
-            Self::ExHiRom { srtc: Some(srtc), .. } => {
+            Self::ExHiRom {
+                srtc: Some(srtc), ..
+            } => {
                 save_writer.persist_serialized("rtc", srtc)?;
             }
             Self::Spc7110(spc7110) => {
@@ -701,7 +818,9 @@ impl Cartridge {
 
     pub fn reset(&mut self) {
         match self {
-            Self::ExHiRom { srtc: Some(srtc), .. } => {
+            Self::ExHiRom {
+                srtc: Some(srtc), ..
+            } => {
                 srtc.reset_state();
             }
             Self::DspLoRom { upd77c25, .. }
@@ -753,14 +872,21 @@ fn new_exhirom_cartridge<S: SaveWriter>(
     // Chipset byte of $55 indicates S-RTC present (only used by Daikaijuu Monogatari II)
     let has_srtc = rom[EXHIROM_HEADER_ADDR + 0x16] == 0x55;
     let srtc = has_srtc.then(|| {
-        let mut srtc = save_writer.load_serialized("rtc").ok().unwrap_or_else(SRtc::new);
+        let mut srtc = save_writer
+            .load_serialized("rtc")
+            .ok()
+            .unwrap_or_else(SRtc::new);
         srtc.reset_state();
         srtc
     });
 
     log::info!("ExHiROM cartridge has S-RTC: {}", srtc.is_some());
 
-    Cartridge::ExHiRom { rom: Rom(rom), sram: initial_sram, srtc }
+    Cartridge::ExHiRom {
+        rom: Rom(rom),
+        sram: initial_sram,
+        srtc,
+    }
 }
 
 fn region_to_timing_mode(region_byte: u8, rom: &[u8]) -> TimingMode {
@@ -791,7 +917,10 @@ fn region_to_timing_mode(region_byte: u8, rom: &[u8]) -> TimingMode {
 
 fn guess_cartridge_type(rom: &[u8]) -> Option<CartridgeType> {
     if rom.len() < 0x8000 {
-        log::error!("ROM is too small; all ROMs should be at least 32KB, was {} bytes", rom.len());
+        log::error!(
+            "ROM is too small; all ROMs should be at least 32KB, was {} bytes",
+            rom.len()
+        );
         return None;
     }
 
@@ -939,7 +1068,11 @@ fn guess_st01x_variant(rom: &[u8]) -> St01xVariant {
     let checksum = CRC.checksum(rom);
 
     // Hayazashi Nidan Morita Shougi (J)
-    if checksum == 0x81E822AD { St01xVariant::St011 } else { St01xVariant::St010 }
+    if checksum == 0x81E822AD {
+        St01xVariant::St011
+    } else {
+        St01xVariant::St010
+    }
 }
 
 const CLC_OPCODE: u8 = 0x18;

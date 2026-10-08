@@ -29,7 +29,9 @@ impl<const CHANNELS: usize> CubicResampler<CHANNELS> {
             output_samples: VecDeque::with_capacity(48000 / 60 * 2),
         };
 
-        resampler.input_samples.extend([[0.0; CHANNELS]; BUFFER_LEN]);
+        resampler
+            .input_samples
+            .extend([[0.0; CHANNELS]; BUFFER_LEN]);
 
         resampler
     }
@@ -44,8 +46,12 @@ impl<const CHANNELS: usize> CubicResampler<CHANNELS> {
 
             // Having fewer than N samples in the buffers _shouldn't_ happen, but don't crash if it does
             while self.input_samples.len() < BUFFER_LEN {
-                self.input_samples
-                    .push_front(self.input_samples.front().copied().unwrap_or([0.0; CHANNELS]));
+                self.input_samples.push_front(
+                    self.input_samples
+                        .front()
+                        .copied()
+                        .unwrap_or([0.0; CHANNELS]),
+                );
             }
 
             let x = (self.scaled_x_counter as f64) / (scaled_output_frequency as f64);

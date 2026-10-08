@@ -7,10 +7,11 @@ use dsp::iir::FirstOrderIirFilter;
 use dsp::sinc::QualitySincResampler;
 use jgenesis_common::frontend::AudioOutput;
 
-const SNES_AUDIO_FREQUENCY: f64 = apu::OUTPUT_FREQUENCY as f64;
+// mmxrs patch: the APU now runs at bsnes's 24,607,104 Hz (apu.rs), 32040.5 samples/s
+const SNES_AUDIO_FREQUENCY: f64 = apu::BSNES_APU_MASTER_CLOCK_FREQUENCY as f64 / 768.0;
 
-fn new_dc_offset_filter() -> FirstOrderIirFilter {
-    dsp::design::butterworth(5.0, SNES_AUDIO_FREQUENCY, FilterType::HighPass)
+fn new_dc_offset_filter(frequency: f64) -> FirstOrderIirFilter {
+    dsp::design::butterworth(5.0, frequency, FilterType::HighPass)
 }
 
 #[derive(Debug, Clone, Encode, Decode)]
@@ -21,11 +22,16 @@ pub struct AudioResampler {
 }
 
 impl AudioResampler {
-    pub fn new() -> Self {
+    pub fn new(profile: crate::api::TimingProfile) -> Self {
+        let frequency = if profile.hardware() {
+            SNES_AUDIO_FREQUENCY
+        } else {
+            apu::OUTPUT_FREQUENCY as f64
+        };
         Self {
-            dc_offset_l: new_dc_offset_filter(),
-            dc_offset_r: new_dc_offset_filter(),
-            resampler: QualitySincResampler::new(SNES_AUDIO_FREQUENCY, 48000.0),
+            dc_offset_l: new_dc_offset_filter(frequency),
+            dc_offset_r: new_dc_offset_filter(frequency),
+            resampler: QualitySincResampler::new(frequency, 48000.0),
         }
     }
 
@@ -44,6 +50,7 @@ impl AudioResampler {
     }
 
     pub fn update_output_frequency(&mut self, output_frequency: u64) {
-        self.resampler.update_output_frequency(output_frequency as f64);
+        self.resampler
+            .update_output_frequency(output_frequency as f64);
     }
 }

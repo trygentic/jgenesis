@@ -9,7 +9,11 @@ struct DecodeTableEntry {
 
 impl DecodeTableEntry {
     const fn new(mask: u32, target: u32, decode_fn: fn(u32) -> String) -> Self {
-        Self { mask, target, decode_fn }
+        Self {
+            mask,
+            target,
+            decode_fn,
+        }
     }
 }
 
@@ -30,7 +34,12 @@ const ARM_DECODE_TABLE: &[DecodeTableEntry] = &[
 ];
 
 pub fn arm(opcode: u32) -> String {
-    for &DecodeTableEntry { mask, target, decode_fn } in ARM_DECODE_TABLE {
+    for &DecodeTableEntry {
+        mask,
+        target,
+        decode_fn,
+    } in ARM_DECODE_TABLE
+    {
         if opcode & mask == target {
             return decode_fn(opcode);
         }
@@ -269,8 +278,11 @@ fn arm_ldrh(opcode: u32) -> String {
 fn arm_ldm_stm(opcode: u32) -> String {
     let cond = Condition::from_arm_opcode(opcode).suffix();
 
-    let rlist =
-        (0..16).filter(|&i| opcode.bit(i)).map(|i| format!("R{i}")).collect::<Vec<_>>().join(", ");
+    let rlist = (0..16)
+        .filter(|&i| opcode.bit(i))
+        .map(|i| format!("R{i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
 
     let rn = (opcode >> 16) & 0xF;
     let load = opcode.bit(20);
@@ -315,7 +327,11 @@ struct ThumbDecodeEntry {
 
 impl ThumbDecodeEntry {
     const fn new(mask: u16, target: u16, decode_fn: fn(u16) -> String) -> Self {
-        Self { mask, target, decode_fn }
+        Self {
+            mask,
+            target,
+            decode_fn,
+        }
     }
 }
 
@@ -342,7 +358,12 @@ const THUMB_DECODE_TABLE: &[ThumbDecodeEntry] = &[
 ];
 
 pub fn thumb(opcode: u16) -> String {
-    for &ThumbDecodeEntry { mask, target, decode_fn } in THUMB_DECODE_TABLE {
+    for &ThumbDecodeEntry {
+        mask,
+        target,
+        decode_fn,
+    } in THUMB_DECODE_TABLE
+    {
         if opcode & mask == target {
             return decode_fn(opcode);
         }
@@ -572,7 +593,10 @@ fn thumb_15(opcode: u16) -> String {
 }
 
 fn thumb_rlist_vec(opcode: u16) -> Vec<String> {
-    (0..8).filter(|&i| opcode.bit(i)).map(|i| format!("R{i}")).collect()
+    (0..8)
+        .filter(|&i| opcode.bit(i))
+        .map(|i| format!("R{i}"))
+        .collect()
 }
 
 // Conditional branch

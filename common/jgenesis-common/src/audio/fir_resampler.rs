@@ -21,7 +21,11 @@ impl<const N: usize> RingBuffer<N> {
     }
 
     fn new() -> Self {
-        Self { buffer: vec![0.0; Self::capacity()], idx: Self::capacity(), len: 0 }
+        Self {
+            buffer: vec![0.0; Self::capacity()],
+            idx: Self::capacity(),
+            len: 0,
+        }
     }
 
     fn push(&mut self, sample: f64) {
@@ -106,8 +110,10 @@ impl<const CHANNELS: usize, const LPF_TAPS: usize, Kernel: FirKernel<LPF_TAPS>>
         while self.sample_count_product >= self.scaled_source_frequency {
             self.sample_count_product -= self.scaled_source_frequency;
 
-            let output_samples =
-                apply_fir_filter(array::from_fn(|ch| &self.input[ch]), Kernel::lpf_coefficients());
+            let output_samples = apply_fir_filter(
+                array::from_fn(|ch| &self.input[ch]),
+                Kernel::lpf_coefficients(),
+            );
             self.output.push_back(output_samples);
         }
     }
@@ -144,7 +150,8 @@ fn apply_fir_filter<const N: usize, const CHANNELS: usize>(
         for (i, coefficient) in coefficients.iter().copied().enumerate() {
             let input_idx = samples[0].idx + i;
             for (ch, sum) in sums.iter_mut().enumerate() {
-                *sum = sum.algebraic_add(coefficient.algebraic_mul(samples[ch].buffer[input_idx]));
+                // mmxrs patch: algebraic_add/algebraic_mul are unstable on Rust 1.96
+                *sum += coefficient * samples[ch].buffer[input_idx];
             }
         }
         sums
@@ -153,8 +160,8 @@ fn apply_fir_filter<const N: usize, const CHANNELS: usize>(
         for i in N - samples[0].len..N {
             let input_idx = samples[0].idx + i - (N - samples[0].len);
             for (ch, sum) in sums.iter_mut().enumerate() {
-                *sum =
-                    sum.algebraic_add(coefficients[i].algebraic_mul(samples[ch].buffer[input_idx]));
+                // mmxrs patch: algebraic_add/algebraic_mul are unstable on Rust 1.96
+                *sum += coefficients[i] * samples[ch].buffer[input_idx];
             }
         }
         sums
@@ -199,7 +206,10 @@ mod tests {
         buffer.push(11.0);
         assert_eq!(buffer.idx, buffer.buffer.len() - 5);
         assert_eq!(buffer.len, 3);
-        assert_eq!(&buffer.buffer[buffer.idx..buffer.idx + 3], &[11.0, 9.0, 7.0]);
+        assert_eq!(
+            &buffer.buffer[buffer.idx..buffer.idx + 3],
+            &[11.0, 9.0, 7.0]
+        );
     }
 
     #[test]
@@ -219,13 +229,19 @@ mod tests {
         buffer.push(54321.0);
         assert_eq!(buffer.idx, 0);
         assert_eq!(buffer.len, N);
-        assert_eq!(&buffer.buffer[0..N], &[54321.0, current[0], current[1], current[2]]);
+        assert_eq!(
+            &buffer.buffer[0..N],
+            &[54321.0, current[0], current[1], current[2]]
+        );
 
         // Push while buffer is full should copy contents to the end of the buffer
         buffer.push(56789.0);
         assert_eq!(buffer.idx, buffer.buffer.len() - N);
         assert_eq!(buffer.len, N);
-        assert_eq!(&buffer.buffer[buffer.idx..], &[56789.0, 54321.0, current[0], current[1]]);
+        assert_eq!(
+            &buffer.buffer[buffer.idx..],
+            &[56789.0, 54321.0, current[0], current[1]]
+        );
 
         buffer.push(12345.0);
         assert_eq!(buffer.idx, buffer.buffer.len() - N - 1);

@@ -128,6 +128,8 @@ struct State {
     last_irq: bool,
     irq_triggered: bool,
     reset_pending: bool,
+    // lttprs: interrupt nesting (BRK/COP/NMI/IRQ entered minus RTIs executed)
+    interrupt_depth: u16,
     // Temp values to store internal instruction state between cycles
     t0: u8,
     t1: u8,
@@ -179,7 +181,10 @@ pub struct Wdc65816 {
 impl Wdc65816 {
     #[must_use]
     pub fn new() -> Self {
-        Self { registers: Registers::new(), state: State::default() }
+        Self {
+            registers: Registers::new(),
+            state: State::default(),
+        }
     }
 
     pub fn reset<B: BusInterface>(&mut self, bus: &mut B) {
@@ -226,6 +231,30 @@ impl Wdc65816 {
         instructions::execute(self, bus);
     }
 
+    /// lttprs: samples the NMI/IRQ lines like the end of an instruction does and reports
+    /// whether an interrupt would be taken at the next instruction boundary. Used while the
+    /// host stalls the CPU so interrupts are still serviced on time.
+    pub fn poll_interrupts<B: BusInterface>(&mut self, bus: &mut B) -> bool {
+        instructions::poll_interrupts(self, bus);
+        self.state.nmi_triggered || self.state.irq_triggered
+    }
+
+    /// lttprs: interrupt entries minus RTIs since reset. A thread switch done with RTI
+    /// (as A Link to the Past's NMI does) keeps it balanced.
+    /// lttprs: whether an interrupt will be taken at the next instruction boundary, from the
+    /// lines as last sampled (no new sample).
+    #[inline]
+    #[must_use]
+    pub fn interrupt_triggered(&self) -> bool {
+        self.state.nmi_triggered || self.state.irq_triggered
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn interrupt_depth(&self) -> u16 {
+        self.state.interrupt_depth
+    }
+
     #[inline]
     #[must_use]
     pub fn is_mid_instruction(&self) -> bool {
@@ -252,5 +281,116 @@ impl Wdc65816 {
 impl Default for Wdc65816 {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Compatibility codec for pre-RecompArch MMX snapshots. This is data layout only;
+/// execution always uses the shared Wdc65816 implementation.
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct LegacyMmxCpu {
+    registers: Registers,
+    state: LegacyMmxState,
+}
+#[derive(Debug, Clone, Encode, Decode)]
+struct LegacyMmxState {
+    cycle: u8,
+    opcode: u8,
+    handling_interrupt: Option<InterruptType>,
+    waiting: bool,
+    stopped: bool,
+    last_nmi: bool,
+    nmi_triggered: bool,
+    last_irq: bool,
+    irq_triggered: bool,
+    reset_pending: bool,
+    // Temp values to store internal instruction state between cycles
+    t0: u8,
+    t1: u8,
+    t2: u8,
+    t3: u8,
+    t4: u8,
+}
+impl From<Wdc65816> for LegacyMmxCpu {
+    fn from(cpu: Wdc65816) -> Self {
+        let State {
+            cycle,
+            opcode,
+            handling_interrupt,
+            waiting,
+            stopped,
+            last_nmi,
+            nmi_triggered,
+            last_irq,
+            irq_triggered,
+            reset_pending,
+            t0,
+            t1,
+            t2,
+            t3,
+            t4,
+            ..
+        } = cpu.state;
+        Self {
+            registers: cpu.registers,
+            state: LegacyMmxState {
+                cycle,
+                opcode,
+                handling_interrupt,
+                waiting,
+                stopped,
+                last_nmi,
+                nmi_triggered,
+                last_irq,
+                irq_triggered,
+                reset_pending,
+                t0,
+                t1,
+                t2,
+                t3,
+                t4,
+            },
+        }
+    }
+}
+impl From<LegacyMmxCpu> for Wdc65816 {
+    fn from(cpu: LegacyMmxCpu) -> Self {
+        let LegacyMmxState {
+            cycle,
+            opcode,
+            handling_interrupt,
+            waiting,
+            stopped,
+            last_nmi,
+            nmi_triggered,
+            last_irq,
+            irq_triggered,
+            reset_pending,
+            t0,
+            t1,
+            t2,
+            t3,
+            t4,
+        } = cpu.state;
+        Self {
+            registers: cpu.registers,
+            state: State {
+                cycle,
+                opcode,
+                handling_interrupt,
+                waiting,
+                stopped,
+                last_nmi,
+                nmi_triggered,
+                last_irq,
+                irq_triggered,
+                reset_pending,
+                t0,
+                t1,
+                t2,
+                t3,
+                t4,
+                interrupt_depth: 0,
+            },
+        }
     }
 }

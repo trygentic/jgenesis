@@ -82,11 +82,17 @@ impl BrrRingBuffer {
 
     fn last_two_written_samples(&self) -> (i16, i16) {
         if self.fill_idx == 0 {
-            (self.buffer[BRR_BUFFER_LEN - 2], self.buffer[BRR_BUFFER_LEN - 1])
+            (
+                self.buffer[BRR_BUFFER_LEN - 2],
+                self.buffer[BRR_BUFFER_LEN - 1],
+            )
         } else if self.fill_idx == 1 {
             (self.buffer[BRR_BUFFER_LEN - 1], self.buffer[0])
         } else {
-            (self.buffer[self.fill_idx - 2], self.buffer[self.fill_idx - 1])
+            (
+                self.buffer[self.fill_idx - 2],
+                self.buffer[self.fill_idx - 1],
+            )
         }
     }
 }
@@ -220,7 +226,11 @@ impl Voice {
         self.gain_mode = GainMode::from_bit(value.bit(7));
         self.gain_value = value & 0x7F;
 
-        log::trace!("  Gain mode: {:?}, Gain value: {:02X}", self.gain_mode, self.gain_value);
+        log::trace!(
+            "  Gain mode: {:?}, Gain value: {:02X}",
+            self.gain_mode,
+            self.gain_value
+        );
     }
 
     fn read_gain(&self) -> u8 {
@@ -334,8 +344,10 @@ impl Voice {
             // Adjust pitch based on previous voice's output
             let modulation_rate =
                 ((i32::from(prev_voice_sample) >> 5) * i32::from(self.sample_rate)) >> 10;
-            self.pitch_counter =
-                self.pitch_counter.wrapping_add_signed(modulation_rate as i16).clamp(0, 0x7FFF);
+            self.pitch_counter = self
+                .pitch_counter
+                .wrapping_add_signed(modulation_rate as i16)
+                .clamp(0, 0x7FFF);
         }
 
         if self.pitch_counter >= 0x4000 {
@@ -400,7 +412,9 @@ impl Voice {
         let mut brr_nibbles = [0_i8; 4];
         let decoder_idx = self.brr_decoder_idx;
         for i in 0..2 {
-            let sample_addr = self.brr_block_address.wrapping_add(1 + (decoder_idx >> 1) + i);
+            let sample_addr = self
+                .brr_block_address
+                .wrapping_add(1 + (decoder_idx >> 1) + i);
             let sample_pair = audio_ram[sample_addr as usize];
 
             // High nibble stores the first sample, low nibble stores the second sample
@@ -471,7 +485,11 @@ impl Voice {
                     }
                     0x60 => {
                         // Bent increase (uses clipped value rather than clamped value)
-                        if self.clipped_envelope_value < 0x600 { 32 } else { 8 }
+                        if self.clipped_envelope_value < 0x600 {
+                            32
+                        } else {
+                            8
+                        }
                     }
                     _ => unreachable!("value & 0x60 is always one of the above values"),
                 };
@@ -556,7 +574,9 @@ struct NoiseGenerator {
 
 impl NoiseGenerator {
     fn new() -> Self {
-        Self { output: i16::MIN >> 1 }
+        Self {
+            output: i16::MIN >> 1,
+        }
     }
 
     fn clock(&mut self, noise_frequency: u8, global_counter: u16) {
@@ -619,7 +639,10 @@ impl EchoFilter {
     }
 
     fn read_echo_enabled(&self) -> u8 {
-        (0..8).map(|i| u8::from(self.echo_enabled[i]) << i).reduce(|a, b| a | b).unwrap()
+        (0..8)
+            .map(|i| u8::from(self.echo_enabled[i]) << i)
+            .reduce(|a, b| a | b)
+            .unwrap()
     }
 
     fn write_echo_buffer_size(&mut self, edl: u8) {
@@ -638,8 +661,9 @@ impl EchoFilter {
         voice_samples_l: &[i32; 8],
         voice_samples_r: &[i32; 8],
     ) -> (i32, i32) {
-        let current_buffer_addr =
-            self.buffer_start_address.wrapping_add(self.buffer_current_offset);
+        let current_buffer_addr = self
+            .buffer_start_address
+            .wrapping_add(self.buffer_current_offset);
         self.sample_buffer_l[self.sample_buffer_idx] =
             read_echo_sample(audio_ram, current_buffer_addr);
         self.sample_buffer_r[self.sample_buffer_idx] =
@@ -731,10 +755,15 @@ impl EchoFilter {
         let echo_sample_r =
             (echo_voice_sum_r + echo_feedback_r).clamp(i16::MIN.into(), i16::MAX.into()) & !1;
 
-        let current_buffer_addr =
-            self.buffer_start_address.wrapping_add(self.buffer_current_offset);
+        let current_buffer_addr = self
+            .buffer_start_address
+            .wrapping_add(self.buffer_current_offset);
         write_echo_sample(audio_ram, current_buffer_addr, echo_sample_l as i16);
-        write_echo_sample(audio_ram, current_buffer_addr.wrapping_add(2), echo_sample_r as i16);
+        write_echo_sample(
+            audio_ram,
+            current_buffer_addr.wrapping_add(2),
+            echo_sample_r as i16,
+        );
     }
 }
 
@@ -749,6 +778,10 @@ fn write_echo_sample(audio_ram: &mut AudioRam, address: u16, value: i16) {
     audio_ram[address as usize] = value_lsb;
     audio_ram[address.wrapping_add(1) as usize] = value_msb;
 }
+
+/// mmxrs patch: research knob (process-wide, not in save states): bit n mutes
+/// voice n in the output. 0 (the default) changes nothing.
+pub static VOICE_MUTE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 #[derive(Debug, Clone, Encode, Decode)]
 struct DspRegisters {
@@ -792,7 +825,10 @@ impl DspRegisters {
         self.soft_reset = value.bit(7);
 
         log::trace!("  Noise frequency: {:02X}", self.noise_frequency);
-        log::trace!("  Echo buffer writes enabled: {}", self.echo_buffer_writes_enabled);
+        log::trace!(
+            "  Echo buffer writes enabled: {}",
+            self.echo_buffer_writes_enabled
+        );
         log::trace!("  Mute amplifier: {}", self.mute_amplifier);
         log::trace!("  Soft reset: {}", self.soft_reset);
     }
@@ -835,9 +871,14 @@ impl AudioDsp {
 
     pub fn read_register(&self) -> u8 {
         log::trace!("DSP register read: {:02X}", self.register_address);
+        self.peek_register(self.register_address)
+    }
 
+    // mmxrs patch: side-effect-free read of any DSP register (research / inspection)
+    #[must_use]
+    pub fn peek_register(&self, address: u8) -> u8 {
         // Addresses $80-$FF mirror $00-$7F
-        let address = self.register_address & 0x7F;
+        let address = address & 0x7F;
 
         // High nibble of register address encodes the voice
         let voice = (address >> 4) as usize;
@@ -917,7 +958,10 @@ impl AudioDsp {
             return;
         }
 
-        log::trace!("DSP register write: {:02X}: {value:02X}", self.register_address);
+        log::trace!(
+            "DSP register write: {:02X}: {value:02X}",
+            self.register_address
+        );
 
         // High nibble of register address encodes the voice
         let voice = (self.register_address >> 4) as usize;
@@ -933,11 +977,17 @@ impl AudioDsp {
             }
             0x02 => {
                 self.voices[voice].write_pitch_low(value);
-                log::trace!("  Voice {voice} sample rate: {:04X}", self.voices[voice].sample_rate);
+                log::trace!(
+                    "  Voice {voice} sample rate: {:04X}",
+                    self.voices[voice].sample_rate
+                );
             }
             0x03 => {
                 self.voices[voice].write_pitch_high(value);
-                log::trace!("  Voice {voice} sample rate: {:04X}", self.voices[voice].sample_rate);
+                log::trace!(
+                    "  Voice {voice} sample rate: {:04X}",
+                    self.voices[voice].sample_rate
+                );
             }
             0x04 => {
                 self.voices[voice].instrument_number = value;
@@ -1023,7 +1073,10 @@ impl AudioDsp {
                 0x0D => {
                     self.echo_filter.feedback_volume = value as i8;
 
-                    log::trace!("  Echo feedback volume: {}", self.echo_filter.feedback_volume);
+                    log::trace!(
+                        "  Echo feedback volume: {}",
+                        self.echo_filter.feedback_volume
+                    );
                 }
                 0x1D => {
                     self.registers.unused_1d_register = value;
@@ -1081,10 +1134,17 @@ impl AudioDsp {
             self.registers.global_counter -= 1;
         }
 
-        self.noise_generator.clock(self.registers.noise_frequency, self.registers.global_counter);
+        self.noise_generator.clock(
+            self.registers.noise_frequency,
+            self.registers.global_counter,
+        );
 
         for i in 0..8 {
-            let prev_voice_output = if i != 0 { self.voices[i - 1].current_sample } else { 0 };
+            let prev_voice_output = if i != 0 {
+                self.voices[i - 1].current_sample
+            } else {
+                0
+            };
             self.voices[i].clock(
                 &self.registers,
                 audio_ram,
@@ -1101,9 +1161,16 @@ impl AudioDsp {
         let mut voice_samples_r = [0; 8];
         let mut voice_sum_l = 0_i32;
         let mut voice_sum_r = 0_i32;
+        let mute = VOICE_MUTE.load(std::sync::atomic::Ordering::Relaxed); // mmxrs patch
         for (i, voice) in self.voices.iter().enumerate() {
             let voice_sample_l = (i32::from(voice.current_sample) * i32::from(voice.volume_l)) >> 6;
             let voice_sample_r = (i32::from(voice.current_sample) * i32::from(voice.volume_r)) >> 6;
+            // mmxrs patch: research knob, a muted voice leaves the mix (and the echo input)
+            let (voice_sample_l, voice_sample_r) = if mute >> i & 1 != 0 {
+                (0, 0)
+            } else {
+                (voice_sample_l, voice_sample_r)
+            };
 
             voice_samples_l[i] = voice_sample_l;
             voice_samples_r[i] = voice_sample_r;

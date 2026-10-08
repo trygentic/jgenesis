@@ -12,7 +12,13 @@ pub struct InterpolateArgs {
 }
 
 pub fn gaussian(
-    InterpolateArgs { pitch_counter, oldest, older, old, sample }: InterpolateArgs,
+    InterpolateArgs {
+        pitch_counter,
+        oldest,
+        older,
+        old,
+        sample,
+    }: InterpolateArgs,
 ) -> i16 {
     // Do math in 32 bits to avoid overflows
     let sample: i32 = sample.into();
@@ -39,7 +45,13 @@ pub fn gaussian(
 }
 
 pub fn hermite(
-    InterpolateArgs { pitch_counter, oldest, older, old, sample }: InterpolateArgs,
+    InterpolateArgs {
+        pitch_counter,
+        oldest,
+        older,
+        old,
+        sample,
+    }: InterpolateArgs,
 ) -> i16 {
     let samples = [oldest.into(), older.into(), old.into(), sample.into()];
     let x = f64::from(pitch_counter & 0xFFF) / 4096.0;
