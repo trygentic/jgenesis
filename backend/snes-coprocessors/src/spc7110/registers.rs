@@ -37,7 +37,11 @@ pub struct DirectDataRomMode {
 impl From<u8> for DirectDataRomMode {
     fn from(value: u8) -> Self {
         Self {
-            step: if value.bit(0) { DirectRomStep::Step } else { DirectRomStep::One },
+            step: if value.bit(0) {
+                DirectRomStep::Step
+            } else {
+                DirectRomStep::One
+            },
             step_target: if value.bit(4) {
                 DirectRomStepTarget::Offset
             } else {
@@ -186,8 +190,10 @@ impl Registers {
 
         // Register $481A: Read from ROM[Base+Offset], and potentially set Base = Base+Offset depending
         // on mode
-        let offset =
-            extend_u16(self.direct_data_rom_offset, self.direct_data_rom_mode.sign_extend_offset);
+        let offset = extend_u16(
+            self.direct_data_rom_offset,
+            self.direct_data_rom_mode.sign_extend_offset,
+        );
         let rom_addr = self.direct_data_rom_base.wrapping_add(offset) & 0xFFFFFF;
         let byte = data_rom.get(rom_addr as usize).copied().unwrap_or(0);
 
@@ -320,9 +326,17 @@ impl Registers {
 }
 
 fn extend_u8(value: u8, sign_extend: bool) -> u32 {
-    if sign_extend { (value as i8 as u32) & 0xFFFFFF } else { value.into() }
+    if sign_extend {
+        (value as i8 as u32) & 0xFFFFFF
+    } else {
+        value.into()
+    }
 }
 
 fn extend_u16(value: u16, sign_extend: bool) -> u32 {
-    if sign_extend { (value as i16 as u32) & 0xFFFFFF } else { value.into() }
+    if sign_extend {
+        (value as i16 as u32) & 0xFFFFFF
+    } else {
+        value.into()
+    }
 }

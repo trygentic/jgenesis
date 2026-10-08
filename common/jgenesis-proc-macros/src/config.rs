@@ -11,8 +11,10 @@ enum CfgDisplayAttr {
 }
 
 fn parse_cfg_display_attrs(field: &Field) -> Vec<CfgDisplayAttr> {
-    let Some(cfg_display_attr) =
-        field.attrs.iter().find(|attr| attr.path().is_ident("cfg_display"))
+    let Some(cfg_display_attr) = field
+        .attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("cfg_display"))
     else {
         return vec![];
     };
@@ -53,7 +55,10 @@ pub fn config_display(input: TokenStream) -> TokenStream {
         .filter(|(_, attrs)| !attrs.contains(&CfgDisplayAttr::Skip))
         .collect();
 
-    assert!(!fields.is_empty(), "ConfigDisplay derive macro only applies to structs with fields");
+    assert!(
+        !fields.is_empty(),
+        "ConfigDisplay derive macro only applies to structs with fields"
+    );
 
     let writeln_statements: Vec<_> = fields
         .iter()

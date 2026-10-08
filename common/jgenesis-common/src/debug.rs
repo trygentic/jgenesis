@@ -122,7 +122,10 @@ impl<'a> DebugViewWithWriteHook<'a> {
         wrapped: Box<dyn DebugMemoryView + 'a>,
         write_hook: Box<dyn FnMut(usize, u8) + 'a>,
     ) -> Self {
-        Self { wrapped, write_hook }
+        Self {
+            wrapped,
+            write_hook,
+        }
     }
 }
 

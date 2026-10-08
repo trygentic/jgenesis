@@ -1,6 +1,7 @@
 [package]
+license = "GPL-3.0-only"
 name = "jgenesis-common"
-version = { workspace = true }
+version = "0.14.1"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -11,20 +12,20 @@ clap = ["dep:clap"]
 serde = ["dep:serde"]
 
 [dependencies]
-jgenesis-proc-macros = { workspace = true }
+jgenesis-proc-macros = { path = "../jgenesis-proc-macros" }
 
-bincode = { workspace = true, features = ["derive"] }
-bytemuck = { workspace = true, features = ["extern_crate_alloc"] }
-clap = { workspace = true, optional = true }
-log = { workspace = true }
-multiversion = { workspace = true }
-rand = { workspace = true }
-rustc-hash = { workspace = true }
-serde = { workspace = true, optional = true }
-time = { workspace = true }
+bincode = { version = "2", features = ["derive"] }
+bytemuck = { version = "1", features = ["derive", "extern_crate_alloc"] }
+clap = { version = "4", features = ["derive"], optional = true }
+log = { version = "0.4" }
+multiversion = "0.8"
+rand = { version = "0.10" }
+rustc-hash = { version = "2" }
+serde = { version = "1", features = ["derive"], optional = true }
+time = { version = "0.3" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-js-sys = { workspace = true }
+js-sys = { version = "0.3" }
+# Preserve LTTP's browser entropy backend for rand/getrandom.
+getrandom = { version = "0.4", features = ["wasm_js"] }
 
-[lints]
-workspace = true

@@ -13,13 +13,17 @@ use bincode::{Decode, Encode};
 use jgenesis_common::frontend::{SaveWriter, TimingMode};
 use jgenesis_common::num::{GetBit, U16Ext, U24Ext};
 use jgenesis_proc_macros::PartialClone;
-use std::num::NonZeroU64;
-use std::{array, iter};
+use std::array;
+use std::num::NonZeroU64; // mmxrs patch: `iter` unused after zeroed WRAM
 
 const MAIN_RAM_LEN: usize = 128 * 1024;
 
 // H=32.5
 const AUTO_JOYPAD_START_MCLK: u64 = 130;
+
+// mmxrs patch: the NMI reaches the CPU 6 master clocks into the first VBlank line
+// (Mesen 2, from the S-CPU schematics: flag at H=2, seen as if set at H=6)
+const NMI_MCLK: u64 = 6;
 
 type MainRam = [u8; MAIN_RAM_LEN];
 
@@ -64,9 +68,13 @@ impl Memory {
             save_writer,
         )?;
 
-        log::info!("Cartridge has battery-backed SRAM: {}", cartridge.has_battery());
+        log::info!(
+            "Cartridge has battery-backed SRAM: {}",
+            cartridge.has_battery()
+        );
 
-        let main_ram: Vec<u8> = iter::repeat_with(rand::random).take(MAIN_RAM_LEN).collect();
+        // mmxrs patch: zero WRAM instead of random fill (deterministic boot for lockstep/netplay)
+        let main_ram: Vec<u8> = vec![0; MAIN_RAM_LEN];
 
         Ok(Self {
             cartridge,
@@ -117,6 +125,16 @@ impl Memory {
         self.cartridge_timing_mode
     }
 
+    // mmxrs patch: whole-WRAM access for the mmx-core wrapper
+    pub fn main_ram(&self) -> &[u8; MAIN_RAM_LEN] {
+        &self.main_ram
+    }
+
+    // mmxrs patch: whole-WRAM access for the mmx-core wrapper
+    pub fn main_ram_mut(&mut self) -> &mut [u8; MAIN_RAM_LEN] {
+        &mut self.main_ram
+    }
+
     pub fn read_wram(&self, address: u32) -> u8 {
         self.main_ram[(address as usize) & (MAIN_RAM_LEN - 1)]
     }
@@ -164,6 +182,15 @@ impl Memory {
         self.cartridge.take_rom_from(&mut other.cartridge);
     }
 
+    /// lttprs: see [`Cartridge::rom_mut`].
+    pub fn rom_mut(&mut self) -> Option<&mut [u8]> {
+        self.cartridge.rom_mut()
+    }
+
+    pub fn sram_mut(&mut self) -> Option<&mut [u8]> {
+        self.cartridge.sram_mut()
+    }
+
     pub fn sram(&self) -> Option<&[u8]> {
         self.cartridge.sram()
     }
@@ -181,6 +208,11 @@ impl Memory {
 
     pub fn cpu_open_bus(&self) -> u8 {
         self.cpu_open_bus
+    }
+
+    // mmxrs patch: put back after a display-only isolated call (api.rs `CpuSnapshot`)
+    pub fn set_cpu_open_bus(&mut self, value: u8) {
+        self.cpu_open_bus = value;
     }
 
     pub fn tick(&mut self, master_cycles_elapsed: u64) {
@@ -258,7 +290,11 @@ enum HdmaAddressingMode {
 
 impl HdmaAddressingMode {
     fn from_byte(byte: u8) -> Self {
-        if byte.bit(6) { Self::Indirect } else { Self::Direct }
+        if byte.bit(6) {
+            Self::Indirect
+        } else {
+            Self::Direct
+        }
     }
 
     fn to_byte(self) -> u8 {
@@ -508,7 +544,10 @@ impl CpuInternalRegisters {
                     self.irq.pending = false;
                 }
 
-                log::trace!("  Auto joypad read enabled: {}", self.auto_joypad_read_enabled);
+                log::trace!(
+                    "  Auto joypad read enabled: {}",
+                    self.auto_joypad_read_enabled
+                );
                 log::trace!("  IRQ mode: {:?}", self.irq.mode);
                 log::trace!("  NMI enabled: {nmi_enabled}");
             }
@@ -702,8 +741,14 @@ impl CpuInternalRegisters {
                 self.dma_direction[channel] = DmaDirection::from_byte(value);
 
                 log::trace!("  DMA transfer unit: {}", self.dma_transfer_unit[channel]);
-                log::trace!("  DMA increment mode: {:?}", self.dma_increment_mode[channel]);
-                log::trace!("  HDMA addressing mode: {:?}", self.hdma_addressing_mode[channel]);
+                log::trace!(
+                    "  DMA increment mode: {:?}",
+                    self.dma_increment_mode[channel]
+                );
+                log::trace!(
+                    "  HDMA addressing mode: {:?}",
+                    self.hdma_addressing_mode[channel]
+                );
                 log::trace!("  DMA direction: {:?}", self.dma_direction[channel]);
             }
             0x4301 => {
@@ -811,7 +856,7 @@ impl CpuInternalRegisters {
         self.input_state.tick(master_cycles_elapsed, *inputs);
 
         // Update VBlank, HBlank, and NMI flags
-        self.update_hv_blank_flags(ppu);
+        self.update_hv_blank_flags(ppu, master_cycles_elapsed);
 
         // Check H/V IRQs
         self.update_irq_line(ppu);
@@ -867,15 +912,30 @@ impl CpuInternalRegisters {
         self.divide_cycles_remaining -= 1;
     }
 
-    fn update_hv_blank_flags(&mut self, ppu: &Ppu) {
+    fn update_hv_blank_flags(&mut self, ppu: &Ppu, master_cycles_elapsed: u64) {
         let vblank_flag = ppu.vblank_flag();
-        if !self.vblank_flag && vblank_flag {
-            // Start of VBlank
+        // mmxrs patch: the NMI (and RDNMI's flag) rises NMI_MCLK master clocks into the
+        // first VBlank line, not at H=0: a CPU cycle that starts before then does not see
+        // it (the 65816 polls at the start of an instruction's last cycle). Upstream
+        // raised it at H=0, so an instruction whose last cycle started at H=0..5 took the
+        // NMI one instruction early. docs/oracle.md.
+        let h = ppu.scanline_master_cycles();
+        let nmi_edge = if ppu.timing_profile.hardware() {
+            vblank_flag
+                && ppu.is_first_vblank_scanline()
+                && h >= NMI_MCLK
+                && h < NMI_MCLK + master_cycles_elapsed
+        } else {
+            !self.vblank_flag && vblank_flag
+        };
+        if nmi_edge {
+            // Start of VBlank (NMI)
             if self.nmi_enabled && !self.vblank_nmi_flag {
                 self.nmi_pending = true;
             }
             self.vblank_nmi_flag = true;
-        } else if self.vblank_flag && !vblank_flag {
+        }
+        if self.vblank_flag && !vblank_flag {
             // End of VBlank
             self.vblank_nmi_flag = false;
         }
@@ -886,7 +946,8 @@ impl CpuInternalRegisters {
 
     fn update_irq_line(&mut self, ppu: &Ppu) {
         let ppu_htime = ppu.htime_for_irq();
-        debug_assert_ne!(ppu_htime, self.irq.last_ppu_htime);
+        // mmxrs patch: an overclocked CPU cycle (3 master cycles) can stay
+        // within one dot; then no H edge is crossed, as the checks below do.
 
         let check_h = || {
             if ppu_htime < self.irq.last_ppu_htime {
@@ -917,8 +978,11 @@ impl CpuInternalRegisters {
             {
                 // Passed HTIME in end of previous line
                 let ppu_vtime = ppu.vtime_for_irq();
-                let prev_vtime =
-                    if ppu_vtime == 0 { ppu.scanlines_per_frame() - 1 } else { ppu_vtime - 1 };
+                let prev_vtime = if ppu_vtime == 0 {
+                    ppu.scanlines_per_frame() - 1
+                } else {
+                    ppu_vtime - 1
+                };
                 prev_vtime == self.irq.vtime
             } else {
                 // Did not pass HTIME
@@ -978,7 +1042,10 @@ impl CpuInternalRegisters {
 
     pub fn controller_hv_latch(&self) -> Option<(u16, u16)> {
         // Controllers can only latch H/V when WRIO bit 7 is set
-        self.programmable_joypad_port.bit(7).then_some(self.input_state.hv_latch()).flatten()
+        self.programmable_joypad_port
+            .bit(7)
+            .then_some(self.input_state.hv_latch())
+            .flatten()
     }
 
     pub fn reload_config(&mut self, config: &SnesEmulatorConfig) {
@@ -1008,7 +1075,44 @@ mod tests {
     }
 
     #[test]
+    fn irq_profile_edges() {
+        use crate::api::TimingProfile;
+        for (profile, v_offset, h_offset) in [
+            (TimingProfile::MmxHardware, 14, 18),
+            (TimingProfile::LttpLegacy, 10, 10),
+        ] {
+            let config = SnesEmulatorConfig {
+                timing_profile: profile,
+                ..Default::default()
+            };
+            for (mode, edge) in [(0x20, v_offset), (0x30, 50 * 4 + h_offset)] {
+                let mut registers = CpuInternalRegisters::new(&config);
+                registers.write_register(NMITIMEN, mode);
+                registers.write_register(VTIME_L, 101);
+                registers.write_register(HTIME_L, 50);
+                let mut ppu = Ppu::new(TimingMode::Ntsc, config);
+                ppu.set_scanline(101);
+                ppu.set_scanline_master_cycles(edge - 1);
+                registers.tick(1, &ppu, &SnesInputs::default());
+                assert!(!registers.irq_pending(), "{profile:?}: early IRQ");
+                tick(1, &mut registers, &mut ppu);
+                assert!(registers.irq_pending(), "{profile:?}: missing IRQ");
+                registers.read_register(TIMEUP, 0);
+                tick(1, &mut registers, &mut ppu);
+                assert!(
+                    !registers.irq_pending(),
+                    "{profile:?}: IRQ reasserted after ack"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn irq_v() {
+        irq_v_profile(crate::api::TimingProfile::LttpLegacy);
+    }
+
+    fn irq_v_profile(profile: crate::api::TimingProfile) {
         let mut registers = CpuInternalRegisters::new(&SnesEmulatorConfig::default());
 
         // V IRQs
@@ -1018,7 +1122,11 @@ mod tests {
         registers.write_register(VTIME_L, 101);
         registers.write_register(VTIME_H, 0);
 
-        let mut ppu = new_ppu();
+        let config = SnesEmulatorConfig {
+            timing_profile: profile,
+            ..Default::default()
+        };
+        let mut ppu = Ppu::new(TimingMode::Ntsc, config);
         ppu.set_scanline(100);
         ppu.set_scanline_master_cycles(338 * 4 + 10);
 
@@ -1075,6 +1183,10 @@ mod tests {
 
     #[test]
     fn irq_hv() {
+        irq_hv_profile(crate::api::TimingProfile::LttpLegacy);
+    }
+
+    fn irq_hv_profile(profile: crate::api::TimingProfile) {
         let mut registers = CpuInternalRegisters::new(&SnesEmulatorConfig::default());
 
         // HV IRQs
@@ -1088,7 +1200,11 @@ mod tests {
         registers.write_register(HTIME_L, 50);
         registers.write_register(HTIME_H, 0);
 
-        let mut ppu = new_ppu();
+        let config = SnesEmulatorConfig {
+            timing_profile: profile,
+            ..Default::default()
+        };
+        let mut ppu = Ppu::new(TimingMode::Ntsc, config);
         ppu.set_scanline(100);
         ppu.set_scanline_master_cycles(338 * 4 + 10);
 

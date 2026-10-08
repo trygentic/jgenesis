@@ -1,7 +1,7 @@
 use crate::ppu::registers::{BitsPerPixel, ObjPriorityMode, TileSize};
 use crate::ppu::{
     MAX_SPRITE_TILES_PER_LINE, MAX_SPRITES_PER_LINE, Pixel, Ppu, VRAM_ADDRESS_MASK,
-    line_overlaps_sprite,
+    line_overlaps_sprite, obj_hooks,
 };
 use bincode::{Decode, Encode};
 use jgenesis_common::num::GetBit;
@@ -86,7 +86,9 @@ impl Ppu {
                 "Beginning sprite evaluation for line {scanline} at OAM idx {start_oam_idx}"
             );
 
-            SpriteState::Evaluation { oam_idx: start_oam_idx as u8 }
+            SpriteState::Evaluation {
+                oam_idx: start_oam_idx as u8,
+            }
         } else {
             // Sprite evaluation not performed in VBlank or forced blanking
             SpriteState::Blank
@@ -94,7 +96,9 @@ impl Ppu {
     }
 
     pub(super) fn progress_sprite_evaluation(&mut self, dot: u16) {
-        let SpriteState::Evaluation { oam_idx } = self.sprites.state else { return };
+        let SpriteState::Evaluation { oam_idx } = self.sprites.state else {
+            return;
+        };
 
         let dot = cmp::min(dot, SPRITE_EVALUATION_END_DOT);
 
@@ -124,7 +128,9 @@ impl Ppu {
                 },
             }
         } else {
-            SpriteState::Evaluation { oam_idx: new_oam_idx }
+            SpriteState::Evaluation {
+                oam_idx: new_oam_idx,
+            }
         };
     }
 
@@ -160,11 +166,23 @@ impl Ppu {
             let oam_high_bits = self.oam_high[oam_high_addr] >> oam_high_shift;
 
             let x_msb = oam_high_bits.bit(0);
-            let size = if oam_high_bits.bit(1) { TileSize::Large } else { TileSize::Small };
+            let size = if oam_high_bits.bit(1) {
+                TileSize::Large
+            } else {
+                TileSize::Small
+            };
 
             let (sprite_width, sprite_height) = match size {
                 TileSize::Small => (small_width, small_height),
                 TileSize::Large => (large_width, large_height),
+            };
+
+            // mmxrs patch: display-only sprite offset
+            let Some((x, y)) =
+                self.offset_sprite(oam_idx, u16::from_le_bytes([x_lsb, u8::from(x_msb)]), y)
+            else {
+                oam_idx = (oam_idx + 1) & OAM_IDX_MASK;
+                continue;
             };
 
             if !line_overlaps_sprite(y, sprite_height, scanline) {
@@ -173,7 +191,6 @@ impl Ppu {
             }
 
             // Only sprites with pixels in the range [0, 256) are scanned into the sprite buffer
-            let x = u16::from_le_bytes([x_lsb, u8::from(x_msb)]);
             if x >= 256 && x + sprite_width <= 512 {
                 oam_idx = (oam_idx + 1) & OAM_IDX_MASK;
                 continue;
@@ -205,11 +222,17 @@ impl Ppu {
 
         self.sprites.dot = SPRITE_FETCH_START_DOT;
         self.sprites.fetched_tiles.clear();
+        self.obj_hooks.fetched_oam.clear(); // lttprs
 
         if self.sprites.scanned_oam_idxs.is_empty() {
             // No tiles to fetch
-            log::trace!("No sprites scanned during evaluation for line {}", self.sprites.line);
-            self.sprites.state = SpriteState::Idle { oam_idx: self.sprites.last_fetched_oam_idx };
+            log::trace!(
+                "No sprites scanned during evaluation for line {}",
+                self.sprites.line
+            );
+            self.sprites.state = SpriteState::Idle {
+                oam_idx: self.sprites.last_fetched_oam_idx,
+            };
             return;
         }
 
@@ -273,6 +296,7 @@ impl Ppu {
             log::trace!("Fetching extra line of sprite tiles for deinterlaced rendering");
 
             self.sprites.fetched_tiles.clear();
+            self.obj_hooks.fetched_oam.clear(); // lttprs
             self.sprites.state = SpriteState::TileFetch {
                 oam_buffer_idx: (self.sprites.scanned_oam_idxs.len() - 1) as u8,
                 tile_idx: 0,
@@ -294,7 +318,11 @@ impl Ppu {
         interlaced_odd_line: bool,
         num_tiles_to_fetch: u16,
     ) -> SpriteState {
-        let SpriteState::TileFetch { mut oam_buffer_idx, mut tile_idx } = self.sprites.state else {
+        let SpriteState::TileFetch {
+            mut oam_buffer_idx,
+            mut tile_idx,
+        } = self.sprites.state
+        else {
             return self.sprites.state;
         };
 
@@ -304,6 +332,11 @@ impl Ppu {
         let mut tiles_fetched = 0;
         while tiles_fetched < num_tiles_to_fetch {
             let oam_idx = self.sprites.scanned_oam_idxs[oam_buffer_idx as usize];
+            // mmxrs patch: this sprite reads the P2 shadow page instead of VRAM
+            let p2_page = (self.p2_tiles.0.slots >> oam_idx) & 1 != 0;
+            let p2_base = (((self.p2_tiles.0.page1 >> oam_idx) & 1)
+                | ((self.p2_tiles.0.page2 >> oam_idx) & 1) << 1) as usize
+                * super::P2_PAGE_WORDS;
 
             let oam_low_addr = usize::from(oam_idx) << 1;
             let [x_lsb, y] = self.oam_low[oam_low_addr].to_le_bytes();
@@ -316,15 +349,27 @@ impl Ppu {
 
             let base_tile_number =
                 u16::from_le_bytes([tile_number_lsb, u8::from(attributes.bit(0))]);
-            let palette = (attributes >> 1) & 0x07;
+            let palette = (attributes >> 1) & 0x07
+                // mmxrs patch: this slot is coloured from the P2 palette
+                | if (self.p2_tiles.0.pal >> oam_idx) & 1 != 0 { super::EXTRA_PALETTE } else { 0 };
             let priority = (attributes >> 4) & 0x03;
             let x_flip = attributes.bit(6);
             let y_flip = attributes.bit(7);
 
             let x_msb = oam_high_bits.bit(0);
-            let size = if oam_high_bits.bit(1) { TileSize::Large } else { TileSize::Small };
+            let size = if oam_high_bits.bit(1) {
+                TileSize::Large
+            } else {
+                TileSize::Small
+            };
 
-            let x = u16::from_le_bytes([x_lsb, x_msb.into()]);
+            // mmxrs patch: display-only sprite offset (scanned sprites always have one)
+            let (x, y) = self
+                .offset_sprite(oam_idx, u16::from_le_bytes([x_lsb, x_msb.into()]), y)
+                .unwrap_or((u16::from_le_bytes([x_lsb, x_msb.into()]), y));
+
+            // lttprs: host-hidden OBJ characters are fetched as transparent
+            let hidden = self.obj_hooks.is_hidden(base_tile_number);
 
             let (sprite_width, sprite_height) = match size {
                 TileSize::Small => (small_width, small_height),
@@ -335,7 +380,9 @@ impl Ppu {
                 // Can happen if Y coordinate changes between OAM scan and tile fetch
                 if oam_buffer_idx == 0 {
                     // Fetched all tiles for this line
-                    return SpriteState::Idle { oam_idx: self.sprites.last_fetched_oam_idx };
+                    return SpriteState::Idle {
+                        oam_idx: self.sprites.last_fetched_oam_idx,
+                    };
                 }
 
                 oam_buffer_idx -= 1;
@@ -379,7 +426,9 @@ impl Ppu {
                     // Sprite time overflow
                     self.registers.sprite_pixel_overflow = true;
                     log::debug!("Hit 34 sprite tiles per line limit on line {scanline}");
-                    return SpriteState::Idle { oam_idx: self.sprites.last_fetched_oam_idx };
+                    return SpriteState::Idle {
+                        oam_idx: self.sprites.last_fetched_oam_idx,
+                    };
                 }
 
                 // Unlike BG tiles in 16x16 mode, overflows in large OBJ tiles do not carry to the next nibble
@@ -396,7 +445,16 @@ impl Ppu {
                 let tile_addr = ((tile_base_addr + (tile_number & 0x00FF) * tile_size_words)
                     & VRAM_ADDRESS_MASK) as usize;
 
-                let tile_data = &self.vram[tile_addr..tile_addr + tile_size_words as usize];
+                // mmxrs patch: P2 slots index the shadow page with tile & 0x3F
+                // (a 4th row wraps to the 1st; the page has 3)
+                let tile_data = if p2_page {
+                    let o = p2_base
+                        + usize::from((tile_number & 0x3F) % super::P2_PAGE_TILES)
+                            * tile_size_words as usize;
+                    &self.p2_tiles.0.page[o..o + tile_size_words as usize]
+                } else {
+                    &self.vram[tile_addr..tile_addr + tile_size_words as usize]
+                };
 
                 let tile_row: u16 = (sprite_line % 8).into();
 
@@ -414,11 +472,27 @@ impl Ppu {
                     colors[if x_flip { 7 - tile_col } else { tile_col }] = color;
                 }
 
-                self.sprites.fetched_tiles.push(if !self.registers.forced_blanking {
-                    SpriteTileData { x, palette, priority, colors }
-                } else {
-                    SpriteTileData { x: 0, palette: 0, priority: 0, colors: [0; 8] }
-                });
+                if hidden {
+                    colors = [0; 8];
+                }
+                self.obj_hooks.fetched_oam.push(oam_idx); // lttprs
+                self.sprites
+                    .fetched_tiles
+                    .push(if !self.registers.forced_blanking {
+                        SpriteTileData {
+                            x,
+                            palette,
+                            priority,
+                            colors,
+                        }
+                    } else {
+                        SpriteTileData {
+                            x: 0,
+                            palette: 0,
+                            priority: 0,
+                            colors: [0; 8],
+                        }
+                    });
                 self.sprites.last_fetched_oam_idx = oam_idx;
 
                 tile_idx += 1;
@@ -428,7 +502,9 @@ impl Ppu {
             if tile_idx == num_sprite_tiles {
                 if oam_buffer_idx == 0 {
                     // Fetched all sprite tiles
-                    return SpriteState::Idle { oam_idx: self.sprites.last_fetched_oam_idx };
+                    return SpriteState::Idle {
+                        oam_idx: self.sprites.last_fetched_oam_idx,
+                    };
                 }
 
                 oam_buffer_idx -= 1;
@@ -437,10 +513,40 @@ impl Ppu {
         }
 
         if dot >= SPRITE_FETCH_END_DOT {
-            SpriteState::Idle { oam_idx: self.sprites.last_fetched_oam_idx }
+            SpriteState::Idle {
+                oam_idx: self.sprites.last_fetched_oam_idx,
+            }
         } else {
-            SpriteState::TileFetch { oam_buffer_idx, tile_idx }
+            SpriteState::TileFetch {
+                oam_buffer_idx,
+                tile_idx,
+            }
         }
+    }
+
+    // mmxrs patch: a slot in `sprite_offset.slots` moves by (dx, dy), a
+    // widescreen HUD slot by its margin shift (ppu::wide `hud_dx`); `None`
+    // when that puts it off screen (Y >= 224 or above -64, X outside
+    // -64..256), so it is not scanned rather than wrapping to the far edge.
+    pub(super) fn offset_sprite(&self, oam_idx: u8, x: u16, y: u8) -> Option<(u16, u8)> {
+        let o = self.sprite_offset;
+        let hud = self.hud_dx(oam_idx);
+        let (dx, dy) = if (o.slots >> oam_idx) & 1 == 0 {
+            (0, 0)
+        } else {
+            (o.dx, o.dy)
+        };
+        if dx == 0 && dy == 0 && hud == 0 {
+            return Some((x, y));
+        }
+        let sx = if x >= 256 { x as i16 - 512 } else { x as i16 } + dx + hud;
+        let sy = if y >= 224 {
+            i16::from(y) - 256
+        } else {
+            i16::from(y)
+        } + dy;
+        ((-64..256).contains(&sx) && (-64..224).contains(&sy))
+            .then_some((sx as u16 & 0x1FF, sy as u8))
     }
 
     pub(super) fn render_sprite_tiles(&mut self) {
@@ -451,6 +557,23 @@ impl Ppu {
         }
 
         self.buffers.obj_pixels.fill(Pixel::TRANSPARENT);
+
+        // lttprs: OAM index per OBJ pixel, for the coverage hooks
+        if self.obj_hooks.coverage.is_some() {
+            let line_oam = &mut self.obj_hooks.line_oam;
+            line_oam.fill(obj_hooks::NO_OBJ);
+            let oams = &self.obj_hooks.fetched_oam;
+            for (i, tile) in self.sprites.fetched_tiles.iter().enumerate() {
+                let oam_idx = oams.get(i).copied().unwrap_or(obj_hooks::NO_OBJ);
+                for dx in 0..8 {
+                    let x = (tile.x + dx) & 0x1FF;
+                    if x < 256 && tile.colors[dx as usize] != 0 {
+                        line_oam[x as usize] = oam_idx;
+                    }
+                }
+            }
+        }
+
         for tile in &self.sprites.fetched_tiles {
             for dx in 0..8 {
                 let x = (tile.x + dx) & 0x1FF;
@@ -464,8 +587,11 @@ impl Ppu {
                     continue;
                 }
 
-                self.buffers.obj_pixels[x as usize] =
-                    Pixel { palette: tile.palette, color: pixel_color, priority: tile.priority };
+                self.buffers.obj_pixels[x as usize] = Pixel {
+                    palette: tile.palette,
+                    color: pixel_color,
+                    priority: tile.priority,
+                };
             }
         }
     }

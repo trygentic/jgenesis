@@ -1,0 +1,10 @@
+name: shared SNES core
+on: [push, pull_request]
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p snes-core -p snes-coprocessors -p snes-config -p wdc65816-emu -p spc700-emu -p arm7tdmi-emu -p dsp -p jgenesis-common -p jgenesis-proc-macros

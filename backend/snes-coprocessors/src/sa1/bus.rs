@@ -183,7 +183,8 @@ impl BusInterface for Sa1Bus<'_> {
         match (bank, offset) {
             (0x00..=0x3F | 0x80..=0xBF, 0x2200..=0x22FF) => {
                 // SA-1 internal registers
-                self.registers.sa1_write(address, value, self.timer, self.mmc, self.rom, self.iram);
+                self.registers
+                    .sa1_write(address, value, self.timer, self.mmc, self.rom, self.iram);
             }
             (0x00..=0x3F | 0x80..=0xBF, 0x0000..=0x07FF | 0x3000..=0x37FF) => {
                 // I-RAM (mapped to both $0000-$07FF and $3000-$37FF for SA-1 CPU)

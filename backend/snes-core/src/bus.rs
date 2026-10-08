@@ -34,6 +34,10 @@ pub struct Bus<'a> {
     pub latched_interrupts: Option<LatchedInterrupts>,
     pub access_master_cycles: u64,
     pub pending_write: Option<(u32, u8)>,
+    // mmxrs patch: the APU is ticked up to a CPU read of its ports (see the $2140 arm)
+    pub apu_sync: bool,
+    pub apu_pre_ticked: u64,
+    pub apu_sample: Option<(f64, f64)>,
 }
 
 impl Bus<'_> {
@@ -50,12 +54,25 @@ impl Bus<'_> {
                 self.access_master_cycles = FAST_MASTER_CYCLES;
 
                 // PPU ports
-                self.ppu.read_port(address).unwrap_or(self.memory.cpu_open_bus())
+                self.ppu
+                    .read_port(address)
+                    .unwrap_or(self.memory.cpu_open_bus())
             }
             0x2140..=0x217F => {
                 self.access_master_cycles = FAST_MASTER_CYCLES;
 
                 // APU ports
+                // mmxrs patch: the CPU samples the bus 4 master clocks before the end of
+                // the cycle (bsnes, Mesen 2), not at its start: run the APU up to there
+                // first, so an SPC700 write in those clocks is seen in this read. The
+                // main loop ticks the APU the rest of the cycle afterwards.
+                if self.apu_sync && self.apu_pre_ticked == 0 {
+                    let pre = self.access_master_cycles - 4;
+                    if let crate::apu::ApuTickEffect::OutputSample(l, r) = self.apu.tick(pre) {
+                        self.apu_sample = Some((l, r));
+                    }
+                    self.apu_pre_ticked = pre;
+                }
                 self.apu.read_port(address)
             }
             0x2180 => {
@@ -70,9 +87,13 @@ impl Bus<'_> {
                 // $4016 and $4017 are CPU I/O ports (manual joypad ports)
                 // The rest of this range is CPU open bus with XSlow memory speed
                 let cpu_open_bus = self.memory.cpu_open_bus();
-                self.cpu_registers.read_register(address, cpu_open_bus).unwrap_or_else(|| {
-                    self.memory.read_cartridge(full_address).unwrap_or(cpu_open_bus)
-                })
+                self.cpu_registers
+                    .read_register(address, cpu_open_bus)
+                    .unwrap_or_else(|| {
+                        self.memory
+                            .read_cartridge(full_address)
+                            .unwrap_or(cpu_open_bus)
+                    })
             }
             0x4200..=0x5FFF => {
                 self.access_master_cycles = FAST_MASTER_CYCLES;
@@ -80,23 +101,31 @@ impl Bus<'_> {
                 // CPU I/O ports (everything except manual joypad ports)
                 // $4220-$42FF and $4380-$5FFF are CPU open bus with Fast memory speed
                 let cpu_open_bus = self.memory.cpu_open_bus();
-                self.cpu_registers.read_register(address, cpu_open_bus).unwrap_or_else(|| {
-                    self.memory.read_cartridge(full_address).unwrap_or(cpu_open_bus)
-                })
+                self.cpu_registers
+                    .read_register(address, cpu_open_bus)
+                    .unwrap_or_else(|| {
+                        self.memory
+                            .read_cartridge(full_address)
+                            .unwrap_or(cpu_open_bus)
+                    })
             }
             0x2000..=0x20FF | 0x2181..=0x3FFF => {
                 self.access_master_cycles = FAST_MASTER_CYCLES;
 
                 // Open bus with Fast memory speed
                 // Send to the cartridge first because some cartridges respond to these addresses
-                self.memory.read_cartridge(full_address).unwrap_or(self.memory.cpu_open_bus())
+                self.memory
+                    .read_cartridge(full_address)
+                    .unwrap_or(self.memory.cpu_open_bus())
             }
             0x6000..=0x7FFF => {
                 self.access_master_cycles = SLOW_MASTER_CYCLES;
 
                 // Open bus with Slow memory speed
                 // Send to the cartridge first because some cartridges respond to these addresses
-                self.memory.read_cartridge(full_address).unwrap_or(self.memory.cpu_open_bus())
+                self.memory
+                    .read_cartridge(full_address)
+                    .unwrap_or(self.memory.cpu_open_bus())
             }
             _ => panic!("invalid system area address: {full_address:06X}"),
         }
@@ -193,13 +222,17 @@ impl BusInterface for Bus<'_> {
                 self.access_master_cycles = SLOW_MASTER_CYCLES;
 
                 // Cartridge (Memory-1)
-                self.memory.read_cartridge(address).unwrap_or(self.memory.cpu_open_bus())
+                self.memory
+                    .read_cartridge(address)
+                    .unwrap_or(self.memory.cpu_open_bus())
             }
             (0x80..=0xBF, 0x8000..=0xFFFF) | (0xC0..=0xFF, _) => {
                 self.access_master_cycles = self.cpu_registers.memory_2_speed().master_cycles();
 
                 // Cartridge (Memory-2)
-                self.memory.read_cartridge(address).unwrap_or(self.memory.cpu_open_bus())
+                self.memory
+                    .read_cartridge(address)
+                    .unwrap_or(self.memory.cpu_open_bus())
             }
             (0x7E..=0x7F, _) => {
                 self.access_master_cycles = SLOW_MASTER_CYCLES;
@@ -227,7 +260,8 @@ impl BusInterface for Bus<'_> {
 
     #[inline]
     fn nmi(&self) -> bool {
-        self.latched_interrupts.map_or(self.cpu_registers.nmi_pending(), |latched| latched.nmi)
+        self.latched_interrupts
+            .map_or(self.cpu_registers.nmi_pending(), |latched| latched.nmi)
     }
 
     #[inline]
@@ -237,10 +271,10 @@ impl BusInterface for Bus<'_> {
 
     #[inline]
     fn irq(&self) -> bool {
-        self.latched_interrupts
-            .map_or(self.cpu_registers.irq_pending() || self.memory.cartridge_irq(), |latched| {
-                latched.irq
-            })
+        self.latched_interrupts.map_or(
+            self.cpu_registers.irq_pending() || self.memory.cartridge_irq(),
+            |latched| latched.irq,
+        )
     }
 
     #[inline]

@@ -289,7 +289,11 @@ macro_rules! impl_store_direct_page_u16 {
                 4 => {
                     final_cycle(cpu, bus);
 
-                    let address = cpu.registers.d.wrapping_add(cpu.state.t0.into()).wrapping_add(1);
+                    let address = cpu
+                        .registers
+                        .d
+                        .wrapping_add(cpu.state.t0.into())
+                        .wrapping_add(1);
                     let value = store_register!(cpu.registers, $register);
                     bus.write(address.into(), value.msb());
                 }

@@ -58,9 +58,12 @@ impl DmaUnit {
         self.last_scanline_mclk = bus.ppu.scanline_master_cycles();
 
         // HDMA takes priority over GPDMA if both are active
-        if let Some(status) =
-            self.tick_hdma(bus, last_scanline_mclk, total_master_cycles, next_cpu_cycle_mclk)
-        {
+        if let Some(status) = self.tick_hdma(
+            bus,
+            last_scanline_mclk,
+            total_master_cycles,
+            next_cpu_cycle_mclk,
+        ) {
             return status;
         }
 
@@ -142,7 +145,12 @@ impl DmaUnit {
         total_master_cycles: u64,
         next_cpu_cycle_mclk: impl Fn(&Bus<'_>) -> u64,
     ) -> Option<DmaStatus> {
-        if !bus.cpu_registers.active_hdma_channels.into_iter().any(|b| b) {
+        if !bus
+            .cpu_registers
+            .active_hdma_channels
+            .into_iter()
+            .any(|b| b)
+        {
             // Reset all do_transfer flags at reload time when no HDMA channels are active
             // Super Ghouls 'N Ghosts depends on this because it enables HDMA mid-frame
             self.hdma_do_transfer.fill(false);
@@ -174,7 +182,9 @@ impl DmaUnit {
         self.hdma = HDmaState::Idle;
         cycles += self.end_dma_if_done(bus, total_master_cycles + cycles, next_cpu_cycle_mclk);
 
-        Some(DmaStatus::InProgress { master_cycles_elapsed: cycles })
+        Some(DmaStatus::InProgress {
+            master_cycles_elapsed: cycles,
+        })
     }
 
     #[must_use]
@@ -227,7 +237,9 @@ impl DmaUnit {
         let cycles = 8 + self.start_dma_if_inactive(total_master_cycles);
         self.hdma = HDmaState::Transfer { channel: 0 };
 
-        Some(DmaStatus::InProgress { master_cycles_elapsed: cycles })
+        Some(DmaStatus::InProgress {
+            master_cycles_elapsed: cycles,
+        })
     }
 
     fn hdma_progress_transfer(
@@ -253,8 +265,12 @@ impl DmaUnit {
 
             // 8 cycles per byte copied (up to 4 bytes / 32 cycles)
             let cycles = hdma_copy_unit(bus, channel);
-            self.hdma = HDmaState::Transfer { channel: (channel + 1) as u8 };
-            return DmaStatus::InProgress { master_cycles_elapsed: cycles };
+            self.hdma = HDmaState::Transfer {
+                channel: (channel + 1) as u8,
+            };
+            return DmaStatus::InProgress {
+                master_cycles_elapsed: cycles,
+            };
         }
 
         self.hdma_finish(bus, total_master_cycles, next_cpu_cycle_mclk)
@@ -293,7 +309,9 @@ impl DmaUnit {
         cycles += self.end_dma_if_done(bus, total_master_cycles + cycles, next_cpu_cycle_mclk);
 
         debug_assert_ne!(cycles, 0);
-        DmaStatus::InProgress { master_cycles_elapsed: cycles }
+        DmaStatus::InProgress {
+            master_cycles_elapsed: cycles,
+        }
     }
 
     fn tick_gpdma(
@@ -304,13 +322,21 @@ impl DmaUnit {
     ) -> DmaStatus {
         match self.gpdma {
             GpDmaState::Idle => {
-                if bus.cpu_registers.active_gpdma_channels.into_iter().any(|b| b) {
+                if bus
+                    .cpu_registers
+                    .active_gpdma_channels
+                    .into_iter()
+                    .any(|b| b)
+                {
                     self.gpdma = GpDmaState::Pending;
                 }
                 DmaStatus::None
             }
             GpDmaState::Pending => self.gpdma_start(bus, total_master_cycles),
-            GpDmaState::Transfer { channel, bytes_copied } => self.gpdma_progress_transfer(
+            GpDmaState::Transfer {
+                channel,
+                bytes_copied,
+            } => self.gpdma_progress_transfer(
                 channel.into(),
                 bytes_copied,
                 bus,
@@ -321,7 +347,12 @@ impl DmaUnit {
     }
 
     fn gpdma_start(&mut self, bus: &mut Bus<'_>, total_master_cycles: u64) -> DmaStatus {
-        if !bus.cpu_registers.active_gpdma_channels.into_iter().any(|b| b) {
+        if !bus
+            .cpu_registers
+            .active_gpdma_channels
+            .into_iter()
+            .any(|b| b)
+        {
             self.gpdma = GpDmaState::Idle;
             return DmaStatus::None;
         }
@@ -332,8 +363,13 @@ impl DmaUnit {
 
         // 8-cycle overhead when starting GPDMA
         let cycles = 8 + self.start_dma_if_inactive(total_master_cycles);
-        self.gpdma = GpDmaState::Transfer { channel: 0, bytes_copied: 0 };
-        DmaStatus::InProgress { master_cycles_elapsed: cycles }
+        self.gpdma = GpDmaState::Transfer {
+            channel: 0,
+            bytes_copied: 0,
+        };
+        DmaStatus::InProgress {
+            master_cycles_elapsed: cycles,
+        }
     }
 
     fn gpdma_progress_transfer(
@@ -376,15 +412,30 @@ impl DmaUnit {
                 bytes_copied = bytes_copied.wrapping_add(1);
             }
 
-            self.gpdma = GpDmaState::Transfer { channel: channel as u8, bytes_copied };
-            return DmaStatus::InProgress { master_cycles_elapsed: cycles };
+            self.gpdma = GpDmaState::Transfer {
+                channel: channel as u8,
+                bytes_copied,
+            };
+            return DmaStatus::InProgress {
+                master_cycles_elapsed: cycles,
+            };
         }
 
         bus.memory.notify_dma_end();
 
         self.gpdma = GpDmaState::Idle;
         let cycles = self.end_dma_if_done(bus, total_master_cycles, next_cpu_cycle_mclk);
-        DmaStatus::InProgress { master_cycles_elapsed: cycles }
+        DmaStatus::InProgress {
+            master_cycles_elapsed: cycles,
+        }
+    }
+
+    /// mmxrs patch: a DRAM refresh during DMA does not count towards the DMA's
+    /// length for the end alignment (bsnes and Mesen 2 count DMA clocks only).
+    pub fn exclude_refresh(&mut self, mclk: u64) {
+        if self.dma_active {
+            self.dma_start_mclk += mclk;
+        }
     }
 
     #[must_use]
@@ -530,7 +581,10 @@ fn hdma_copy_unit(bus: &mut Bus<'_>, channel: usize) -> u64 {
 
             4
         }
-        _ => panic!("invalid DMA transfer unit: {}", bus.cpu_registers.dma_transfer_unit[channel]),
+        _ => panic!(
+            "invalid DMA transfer unit: {}",
+            bus.cpu_registers.dma_transfer_unit[channel]
+        ),
     };
 
     log::trace!("  Copied {bytes_copied} bytes, new AAddress: {bus_a_offset:04X}");
@@ -648,20 +702,44 @@ fn gpdma_copy_byte(bus: &mut Bus<'_>, channel: usize, bytes_copied: u16) {
 
 fn gpdma_start_log(bus: &Bus<'_>) {
     log::trace!("GPDMA started");
-    for (i, active) in bus.cpu_registers.active_gpdma_channels.iter().copied().enumerate() {
+    for (i, active) in bus
+        .cpu_registers
+        .active_gpdma_channels
+        .iter()
+        .copied()
+        .enumerate()
+    {
         if !active {
             continue;
         }
 
-        log::trace!("  Channel {i} bus A bank: {:02X}", bus.cpu_registers.dma_bank[i]);
+        log::trace!(
+            "  Channel {i} bus A bank: {:02X}",
+            bus.cpu_registers.dma_bank[i]
+        );
         log::trace!(
             "  Channel {i} bus A address: {:04X}",
             bus.cpu_registers.gpdma_current_address[i]
         );
-        log::trace!("  Channel {i} bus B address: {:02X}", bus.cpu_registers.dma_bus_b_address[i]);
-        log::trace!("  Channel {i} byte counter: {:04X}", bus.cpu_registers.gpdma_byte_counter[i]);
-        log::trace!("  Channel {i} direction: {:?}", bus.cpu_registers.dma_direction[i]);
-        log::trace!("  Channel {i} transfer unit: {}", bus.cpu_registers.dma_transfer_unit[i]);
-        log::trace!("  Channel {i} increment mode: {:?}", bus.cpu_registers.dma_increment_mode[i]);
+        log::trace!(
+            "  Channel {i} bus B address: {:02X}",
+            bus.cpu_registers.dma_bus_b_address[i]
+        );
+        log::trace!(
+            "  Channel {i} byte counter: {:04X}",
+            bus.cpu_registers.gpdma_byte_counter[i]
+        );
+        log::trace!(
+            "  Channel {i} direction: {:?}",
+            bus.cpu_registers.dma_direction[i]
+        );
+        log::trace!(
+            "  Channel {i} transfer unit: {}",
+            bus.cpu_registers.dma_transfer_unit[i]
+        );
+        log::trace!(
+            "  Channel {i} increment mode: {:?}",
+            bus.cpu_registers.dma_increment_mode[i]
+        );
     }
 }

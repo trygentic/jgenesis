@@ -53,7 +53,11 @@ impl<const MCLK_DIVIDER: u8> Timer<MCLK_DIVIDER> {
     }
 
     pub fn divider(&self) -> u8 {
-        if self.timer_divider == 256 { 0 } else { self.timer_divider as u8 }
+        if self.timer_divider == 256 {
+            0
+        } else {
+            self.timer_divider as u8
+        }
     }
 
     pub fn set_divider(&mut self, divider: u8) {

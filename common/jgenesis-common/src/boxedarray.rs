@@ -35,7 +35,12 @@ impl<T: Debug + Default + Copy, const LEN: usize> BoxedArray<T, LEN> {
     #[must_use]
     #[allow(clippy::missing_panics_doc)]
     pub fn new() -> Self {
-        Self(vec![T::default(); LEN].into_boxed_slice().try_into().unwrap())
+        Self(
+            vec![T::default(); LEN]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
+        )
     }
 }
 
@@ -91,7 +96,9 @@ impl<T: Debug + Default + Copy + Pod, Context, const LEN: usize> Decode<Context>
     fn decode<D: Decoder<Context = Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
         // Similarly, this is _significantly_ faster than the #[derive(Decode)] implementation for non-u8 types
         let mut array = vec![T::default(); LEN];
-        decoder.reader().read(bytemuck::cast_slice_mut(&mut array))?;
+        decoder
+            .reader()
+            .read(bytemuck::cast_slice_mut(&mut array))?;
 
         Ok(Self(array.into_boxed_slice().try_into().unwrap()))
     }

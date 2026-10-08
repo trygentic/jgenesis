@@ -1,27 +1,26 @@
 [package]
+license = "GPL-3.0-only"
 name = "snes-core"
-version = { workspace = true }
+version = "0.14.1"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dsp = { workspace = true }
-jgenesis-proc-macros = { workspace = true }
-jgenesis-common = { workspace = true }
+dsp = { path = "../../common/dsp" }
+jgenesis-proc-macros = { path = "../../common/jgenesis-proc-macros" }
+jgenesis-common = { path = "../../common/jgenesis-common" }
 
-snes-config = { workspace = true }
+snes-config = { path = "../../config/snes-config" }
 
-spc700-emu = { workspace = true }
-wdc65816-emu = { workspace = true }
+spc700-emu = { path = "../../cpu/spc700-emu" }
+wdc65816-emu = { path = "../../cpu/wdc65816-emu" }
 
-snes-coprocessors = { workspace = true }
+snes-coprocessors = { path = "../snes-coprocessors" }
 
-bincode = { workspace = true }
-crc = { workspace = true }
-log = { workspace = true }
-rand = { workspace = true }
-thiserror = { workspace = true }
+bincode = { version = "2" }
+crc = { version = "3" }
+log = { version = "0.4" }
+rand = { version = "0.10" }
+thiserror = { version = "2" }
 
-[lints]
-workspace = true

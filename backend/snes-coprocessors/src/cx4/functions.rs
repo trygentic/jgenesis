@@ -236,7 +236,10 @@ fn read_ram(registers: &mut DspRegisters, opcode: u16, ram_value: u8) {
             log::warn!("Unexpected read RAM opcode: {opcode:04X}");
         }
     }
-    log::trace!("  read RAM value {ram_value}; RAM buffer is {:06X}", registers.ram_buffer);
+    log::trace!(
+        "  read RAM value {ram_value}; RAM buffer is {:06X}",
+        registers.ram_buffer
+    );
 }
 
 fn movb_ram_op(
@@ -343,8 +346,10 @@ fn jn(cx4_registers: &mut Cx4Registers, dsp_registers: &DspRegisters, opcode: u1
 fn call(cx4_registers: &mut Cx4Registers, dsp_registers: &mut DspRegisters, opcode: u16) {
     log::trace!("call {:02X}", opcode & 0xFF);
 
-    dsp_registers
-        .push_call_stack(cx4_registers.instruction_page, cx4_registers.instruction_pointer);
+    dsp_registers.push_call_stack(
+        cx4_registers.instruction_page,
+        cx4_registers.instruction_pointer,
+    );
     execute_jump(cx4_registers, dsp_registers, opcode);
 }
 
@@ -352,8 +357,10 @@ fn callz(cx4_registers: &mut Cx4Registers, dsp_registers: &mut DspRegisters, opc
     log::trace!("callz {:02X}", opcode & 0xFF);
 
     if dsp_registers.zero {
-        dsp_registers
-            .push_call_stack(cx4_registers.instruction_page, cx4_registers.instruction_pointer);
+        dsp_registers.push_call_stack(
+            cx4_registers.instruction_page,
+            cx4_registers.instruction_pointer,
+        );
         execute_jump(cx4_registers, dsp_registers, opcode);
     }
 }
@@ -362,8 +369,10 @@ fn callc(cx4_registers: &mut Cx4Registers, dsp_registers: &mut DspRegisters, opc
     log::trace!("callc {:02X}", opcode & 0xFF);
 
     if dsp_registers.carry {
-        dsp_registers
-            .push_call_stack(cx4_registers.instruction_page, cx4_registers.instruction_pointer);
+        dsp_registers.push_call_stack(
+            cx4_registers.instruction_page,
+            cx4_registers.instruction_pointer,
+        );
         execute_jump(cx4_registers, dsp_registers, opcode);
     }
 }
@@ -372,8 +381,10 @@ fn calln(cx4_registers: &mut Cx4Registers, dsp_registers: &mut DspRegisters, opc
     log::trace!("calln {:02X}", opcode & 0xFF);
 
     if dsp_registers.negative {
-        dsp_registers
-            .push_call_stack(cx4_registers.instruction_page, cx4_registers.instruction_pointer);
+        dsp_registers.push_call_stack(
+            cx4_registers.instruction_page,
+            cx4_registers.instruction_pointer,
+        );
         execute_jump(cx4_registers, dsp_registers, opcode);
     }
 }
@@ -460,7 +471,11 @@ fn sub_a_imm(registers: &mut DspRegisters, opcode: u16) {
 
 fn sub(registers: &mut DspRegisters, opcode: u16, value: u32, reverse: bool) {
     let a = apply_a_shift(registers.a, opcode);
-    let result = if reverse { value.wrapping_sub(a) } else { a.wrapping_sub(value) };
+    let result = if reverse {
+        value.wrapping_sub(a)
+    } else {
+        a.wrapping_sub(value)
+    };
     registers.set_nz(result);
     registers.carry = result <= 0xFFFFFF;
 
@@ -495,7 +510,11 @@ fn cmp_a_imm(registers: &mut DspRegisters, opcode: u16) {
 
 fn cmp(registers: &mut DspRegisters, opcode: u16, value: u32, reverse: bool) {
     let a = apply_a_shift(registers.a, opcode);
-    let result = if reverse { value.wrapping_sub(a) } else { a.wrapping_sub(value) };
+    let result = if reverse {
+        value.wrapping_sub(a)
+    } else {
+        a.wrapping_sub(value)
+    };
     registers.set_nz(result);
     registers.carry = result <= 0xFFFFFF;
 }
@@ -717,7 +736,10 @@ fn read_register(cx4_registers: &Cx4Registers, dsp_registers: &DspRegisters, opc
         0x50..=0x5F => CONSTANT_REGISTERS[(opcode & 0xF) as usize],
         0x60..=0x6F => cx4_registers.gpr[(opcode & 0xF) as usize],
         _ => {
-            log::warn!("Unhandled CX4 coprocessor register read: {:02X}", opcode & 0xFF);
+            log::warn!(
+                "Unhandled CX4 coprocessor register read: {:02X}",
+                opcode & 0xFF
+            );
             0x00
         }
     }
@@ -756,7 +778,10 @@ fn write_register(
             cx4_registers.gpr[register_idx] = value & 0xFFFFFF;
         }
         _ => {
-            log::warn!("Unhandled CX4 coprocessor register write: {:02X}", opcode & 0xFF);
+            log::warn!(
+                "Unhandled CX4 coprocessor register write: {:02X}",
+                opcode & 0xFF
+            );
         }
     }
 }

@@ -23,11 +23,20 @@ fn test_deserialize_default_on_error() {
 
     assert_eq!(toml::from_str::<Foo>("b = 20"), Ok(Foo { a: 5, b: 20 }));
 
-    assert_eq!(toml::from_str::<Foo>("a = \"asdf\""), Ok(Foo { a: 5, b: 10 }));
+    assert_eq!(
+        toml::from_str::<Foo>("a = \"asdf\""),
+        Ok(Foo { a: 5, b: 10 })
+    );
 
-    assert_eq!(toml::from_str::<Foo>("a = 20\nb = \"asdf\""), Ok(Foo { a: 20, b: 10 }));
+    assert_eq!(
+        toml::from_str::<Foo>("a = 20\nb = \"asdf\""),
+        Ok(Foo { a: 20, b: 10 })
+    );
 
-    assert_eq!(toml::from_str::<Foo>("a = 20\nb = 30"), Ok(Foo { a: 20, b: 30 }));
+    assert_eq!(
+        toml::from_str::<Foo>("a = 20\nb = 30"),
+        Ok(Foo { a: 20, b: 30 })
+    );
 }
 
 #[deserialize_default_on_error]

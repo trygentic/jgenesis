@@ -29,13 +29,17 @@ pub fn fake_decode(input: TokenStream) -> TokenStream {
     let (_, type_generics, where_clause) = input.generics.split_for_impl();
 
     let mut decode_generics = input.generics.clone();
-    decode_generics.params.insert(0, GenericParam::Type(TypeParam::from(format_ident!("Context"))));
+    decode_generics.params.insert(
+        0,
+        GenericParam::Type(TypeParam::from(format_ident!("Context"))),
+    );
     let (decode_impl_generics, _, _) = decode_generics.split_for_impl();
 
     let mut borrow_generics = input.generics.clone();
-    borrow_generics
-        .params
-        .insert(0, GenericParam::Type(TypeParam::from(Ident::new("Context", Span::call_site()))));
+    borrow_generics.params.insert(
+        0,
+        GenericParam::Type(TypeParam::from(Ident::new("Context", Span::call_site()))),
+    );
     borrow_generics.params.insert(
         0,
         GenericParam::Lifetime(LifetimeParam::new(Lifetime::new("'de", Span::call_site()))),

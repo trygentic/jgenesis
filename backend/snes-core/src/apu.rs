@@ -3,7 +3,7 @@
 //! The APU consists of two primary components: an SPC700 CPU and a DSP that can play back ADPCM samples
 
 mod bootrom;
-mod dsp;
+pub(crate) mod dsp; // mmxrs patch: VOICE_MUTE
 mod timer;
 
 use crate::api::SnesEmulatorConfig;
@@ -23,6 +23,16 @@ pub const OUTPUT_FREQUENCY: u64 = 32040;
 
 // Roughly 24.607 MHz
 const ACTUAL_APU_MASTER_CLOCK_FREQUENCY: u64 = OUTPUT_FREQUENCY * 768;
+
+// mmxrs patch: the APU clock of bsnes v0.87 (`smp.ntsc_frequency = 24607104; //32040.5 * 768`),
+// the emulator the TASVideos Mega Man X movies were made on, against its CPU clock
+// (`cpu.ntsc_frequency = 21477272`, PAL 21281370). A real APU's resonator is
+// 24.576 MHz nominal and measures ~24.607 MHz; 32040 * 768 (upstream) is 384 Hz slower,
+// which over a few minutes moves the SPC700 by thousands of cycles against the CPU and
+// so changes how long the game's APU uploads and handshakes take (and its lag frames).
+// docs/oracle.md.
+pub const BSNES_APU_MASTER_CLOCK_FREQUENCY: u64 = 24_607_104;
+const BSNES_NTSC_MASTER_CLOCK_FREQUENCY: u64 = 21_477_272;
 
 // APU master clock rate increased such that audio signal is timed to 60Hz for NTSC (and slightly under 50Hz for PAL)
 // Specifically, (actual_mclk_rate * 60.099 / 60.0)
@@ -225,6 +235,13 @@ pub enum ApuTickEffect {
     OutputSample(f64, f64),
 }
 
+thread_local! {
+    /// mmxrs patch: when `Some`, every SPC700 instruction start as `(PC, SPC cycle)`.
+    pub static SPC_TRACE: std::cell::RefCell<Option<Vec<(u16, u64)>>> = const { std::cell::RefCell::new(None) };
+    /// mmxrs patch: SPC700 cycles run on this thread (debug).
+    pub static SPC_CYCLES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Apu {
     spc700: Spc700,
@@ -235,6 +252,7 @@ pub struct Apu {
     master_cycles_product: u64,
     sample_divider: u8,
     enable_audio_60hz_hack: bool,
+    pub(crate) timing_profile: crate::api::TimingProfile,
 }
 
 macro_rules! new_spc700_bus {
@@ -257,12 +275,16 @@ impl Apu {
         let mut apu = Self {
             spc700: Spc700::new(),
             dsp: AudioDsp::new(config.audio_interpolation),
-            audio_ram: vec![0; AUDIO_RAM_LEN].into_boxed_slice().try_into().unwrap(),
+            audio_ram: vec![0; AUDIO_RAM_LEN]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
             registers: ApuRegisters::new(),
             main_master_clock_frequency,
             master_cycles_product: 0,
             sample_divider: SAMPLE_DIVIDER,
             enable_audio_60hz_hack: config.audio_60hz_hack,
+            timing_profile: config.timing_profile,
         };
 
         apu.spc700.reset(&mut new_spc700_bus!(apu));
@@ -274,13 +296,18 @@ impl Apu {
     pub fn tick(&mut self, main_master_cycles: u64) -> ApuTickEffect {
         let apu_master_clock_frequency = if self.enable_audio_60hz_hack {
             ADJUSTED_APU_MASTER_CLOCK_FREQUENCY
+        } else if self.timing_profile.hardware() {
+            BSNES_APU_MASTER_CLOCK_FREQUENCY
         } else {
             ACTUAL_APU_MASTER_CLOCK_FREQUENCY
         };
         self.master_cycles_product += main_master_cycles * apu_master_clock_frequency;
 
-        while self.master_cycles_product >= 24 * self.main_master_clock_frequency {
-            self.master_cycles_product -= 24 * self.main_master_clock_frequency;
+        // mmxrs patch: the APU/CPU clock ratio is bsnes v0.87's (see BSNES_*); the CPU side
+        // is counted at bsnes's CPU rate, so 24,607,104 APU clocks per 21,477,272 CPU clocks
+        let main_master_clock_frequency = self.bsnes_main_master_clock_frequency();
+        while self.master_cycles_product >= 24 * main_master_clock_frequency {
+            self.master_cycles_product -= 24 * main_master_clock_frequency;
             self.clock();
 
             self.sample_divider -= 1;
@@ -301,11 +328,43 @@ impl Apu {
         self.registers.port_01_reset = false;
         self.registers.port_23_reset = false;
 
+        // mmxrs patch: SPC700 instruction trace (debug: oracle comparison)
+        SPC_TRACE.with(|t| {
+            if let Some(v) = t.borrow_mut().as_mut()
+                && !self.spc700.is_mid_instruction()
+            {
+                v.push((self.spc700.registers().pc, SPC_CYCLES.get()));
+            }
+        });
+        SPC_CYCLES.set(SPC_CYCLES.get() + 1);
+
         self.spc700.tick(&mut new_spc700_bus!(self));
 
         self.registers.timer_0.tick();
         self.registers.timer_1.tick();
         self.registers.timer_2.tick();
+    }
+
+    // mmxrs patch: SPC700 audio RAM and DSP registers (research / inspection)
+    #[must_use]
+    pub fn audio_ram(&self) -> &[u8] {
+        &self.audio_ram[..]
+    }
+
+    #[must_use]
+    pub fn dsp_register(&self, address: u8) -> u8 {
+        self.dsp.peek_register(address)
+    }
+
+    // mmxrs patch: see BSNES_APU_MASTER_CLOCK_FREQUENCY
+    fn bsnes_main_master_clock_frequency(&self) -> u64 {
+        if self.timing_profile.hardware()
+            && self.main_master_clock_frequency == constants::NTSC_MASTER_CLOCK_FREQUENCY
+        {
+            BSNES_NTSC_MASTER_CLOCK_FREQUENCY
+        } else {
+            self.main_master_clock_frequency
+        }
     }
 
     pub fn read_port(&mut self, address: u32) -> u8 {
@@ -335,7 +394,9 @@ impl Apu {
     }
 
     pub fn update_config(&mut self, config: SnesEmulatorConfig) {
-        self.dsp.update_audio_interpolation(config.audio_interpolation);
+        self.timing_profile = config.timing_profile;
+        self.dsp
+            .update_audio_interpolation(config.audio_interpolation);
         self.enable_audio_60hz_hack = config.audio_60hz_hack;
     }
 }

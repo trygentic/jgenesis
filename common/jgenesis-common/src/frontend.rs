@@ -99,10 +99,18 @@ impl Display for ColorCorrection {
         match self {
             Self::None => write!(f, "None"),
             &Self::GbcLcd { screen_gamma } => {
-                write!(f, "Game Boy Color LCD (gamma {:.1})", f32::from(screen_gamma))
+                write!(
+                    f,
+                    "Game Boy Color LCD (gamma {:.1})",
+                    f32::from(screen_gamma)
+                )
             }
             &Self::GbaLcd { screen_gamma } => {
-                write!(f, "Game Boy Advance LCD (gamma {:.1})", f32::from(screen_gamma))
+                write!(
+                    f,
+                    "Game Boy Advance LCD (gamma {:.1})",
+                    f32::from(screen_gamma)
+                )
             }
         }
     }
@@ -166,7 +174,10 @@ pub struct RenderFrameOptionsHashable {
 impl RenderFrameOptions {
     #[must_use]
     pub fn pixel_aspect_ratio(pixel_aspect_ratio: Option<FiniteF64>) -> Self {
-        Self { pixel_aspect_ratio, ..Self::default() }
+        Self {
+            pixel_aspect_ratio,
+            ..Self::default()
+        }
     }
 
     #[must_use]

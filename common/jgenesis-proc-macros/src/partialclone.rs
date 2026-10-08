@@ -14,7 +14,9 @@ pub fn partial_clone(input: TokenStream) -> TokenStream {
 
     let mut generics = input.generics.clone();
     for type_param in generics.type_params_mut() {
-        type_param.bounds.push(parse_quote!(::jgenesis_common::frontend::PartialClone));
+        type_param
+            .bounds
+            .push(parse_quote!(::jgenesis_common::frontend::PartialClone));
     }
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
 

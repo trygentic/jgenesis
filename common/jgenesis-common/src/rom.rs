@@ -73,6 +73,9 @@ mod tests {
     fn mirror_11_to_16() {
         let mut rom = new_vec::<11>();
         mirror_to_next_power_of_two(&mut rom);
-        assert_eq!(rom, vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 8, 9, 10, 10]);
+        assert_eq!(
+            rom,
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 8, 9, 10, 10]
+        );
     }
 }

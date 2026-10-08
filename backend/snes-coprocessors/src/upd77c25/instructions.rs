@@ -35,9 +35,17 @@ fn execute_alu(cpu: &mut Upd77c25, opcode: u32) {
     let operand = operand as i16;
 
     let (accumulator, flags, other_flags) = if opcode.bit(15) {
-        (&mut cpu.registers.accumulator_b, &mut cpu.registers.flags_b, cpu.registers.flags_a)
+        (
+            &mut cpu.registers.accumulator_b,
+            &mut cpu.registers.flags_b,
+            cpu.registers.flags_a,
+        )
     } else {
-        (&mut cpu.registers.accumulator_a, &mut cpu.registers.flags_a, cpu.registers.flags_b)
+        (
+            &mut cpu.registers.accumulator_a,
+            &mut cpu.registers.flags_a,
+            cpu.registers.flags_b,
+        )
     };
 
     match alu_opcode {

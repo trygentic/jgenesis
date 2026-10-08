@@ -310,13 +310,20 @@ impl St018 {
         let bus = ArmBus {
             program_rom,
             data_rom,
-            ram: vec![0; RAM_LEN_WORDS].into_boxed_slice().try_into().unwrap(),
+            ram: vec![0; RAM_LEN_WORDS]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
             registers: Registers::new(),
             cycles: 0,
             open_bus: 0,
         };
 
-        Ok(Self { cpu: Arm7Tdmi::new(), bus, snes_cycles: 0 })
+        Ok(Self {
+            cpu: Arm7Tdmi::new(),
+            bus,
+            snes_cycles: 0,
+        })
     }
 
     pub fn tick(&mut self, snes_master_cycles: u64) {

@@ -222,7 +222,8 @@ impl ControllerPort {
                     _ => SuperScopeState::default(),
                 };
 
-                self.super_scope_register.update(super_scope, last_strobe_state);
+                self.super_scope_register
+                    .update(super_scope, last_strobe_state);
             }
             SnesController::None => {
                 // All bits read 0 when no controller is connected
@@ -292,11 +293,15 @@ impl InputState {
         if strobe != self.strobe {
             self.p1.update_strobe(
                 strobe,
-                self.inputs.p1.with_allow_opposing_directions(self.allow_opposing_directions),
+                self.inputs
+                    .p1
+                    .with_allow_opposing_directions(self.allow_opposing_directions),
             );
             self.p2.update_strobe(
                 strobe,
-                self.inputs.p2.with_allow_opposing_directions(self.allow_opposing_directions),
+                self.inputs
+                    .p2
+                    .with_allow_opposing_directions(self.allow_opposing_directions),
             );
         }
 
@@ -336,8 +341,9 @@ impl InputState {
     }
 
     fn progress_auto_joypad_read(&mut self, master_cycles_elapsed: u64) {
-        self.auto_read_cycles_remaining =
-            self.auto_read_cycles_remaining.saturating_sub(master_cycles_elapsed);
+        self.auto_read_cycles_remaining = self
+            .auto_read_cycles_remaining
+            .saturating_sub(master_cycles_elapsed);
 
         if self.auto_read_cycles_remaining == 0 {
             // Auto joypad read strobes the joypad while reading inputs; this populates the manual

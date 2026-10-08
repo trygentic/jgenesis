@@ -273,7 +273,9 @@ impl Rtc4513 {
 
         self.update_time();
 
-        let Some(register) = self.register else { return 0 };
+        let Some(register) = self.register else {
+            return 0;
+        };
 
         let byte = self.read_register(register);
         log::trace!(
@@ -381,7 +383,11 @@ impl Rtc4513 {
     fn write_seconds_high(&mut self, value: u8) {
         self.time.seconds = 10 * (value & 0x07) + (self.time.seconds % 10);
         self.time_lost = value.bit(3);
-        log::trace!("  seconds={}, time_lost={}", self.time.seconds, self.time_lost);
+        log::trace!(
+            "  seconds={}, time_lost={}",
+            self.time.seconds,
+            self.time_lost
+        );
     }
 
     fn read_minutes_low(&self) -> u8 {
@@ -429,7 +435,11 @@ impl Rtc4513 {
             self.time.hour_type = HourType::from_bit(value.bit(2));
         }
 
-        log::trace!("  hours={}, hour_type={}", self.time.hours, self.time.hour_type);
+        log::trace!(
+            "  hours={}, hour_type={}",
+            self.time.hours,
+            self.time.hour_type
+        );
     }
 
     fn read_day_low(&self) -> u8 {
@@ -623,7 +633,10 @@ impl Rtc4513 {
 
         if now_nanos - self.last_irq_nanos >= self.irq_rate_nanos {
             if self.irq_enabled {
-                log::trace!("Flagging IRQ; now = {now_nanos}, last_irq = {}", self.last_irq_nanos);
+                log::trace!(
+                    "Flagging IRQ; now = {now_nanos}, last_irq = {}",
+                    self.last_irq_nanos
+                );
                 self.irq = true;
             }
 

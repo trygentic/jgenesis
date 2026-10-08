@@ -312,7 +312,8 @@ impl Cx4 {
             }
             // CX4 registers
             (0x00..=0x3F | 0x80..=0xBF, 0x7F40..=0x7FAF) => {
-                self.registers.write(offset, value, &self.rom, &mut self.ram);
+                self.registers
+                    .write(offset, value, &self.rom, &mut self.ram);
             }
             _ => {
                 log::info!("CX4 write: {address:06X} {value:02X}");

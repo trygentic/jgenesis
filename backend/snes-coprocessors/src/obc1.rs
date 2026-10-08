@@ -24,7 +24,13 @@ const OAM_BASE_1: u16 = 0x1800;
 impl Obc1 {
     #[must_use]
     pub fn new(rom: Box<[u8]>, sram: Box<[u8]>) -> Self {
-        Self { rom: Rom(rom), sram, oam_base: OAM_BASE_0, oam_index: 0, register_7: 0 }
+        Self {
+            rom: Rom(rom),
+            sram,
+            oam_base: OAM_BASE_0,
+            oam_index: 0,
+            register_7: 0,
+        }
     }
 
     #[inline]

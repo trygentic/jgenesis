@@ -1,14 +1,13 @@
 [package]
+license = "GPL-3.0-only"
 name = "arm7tdmi-emu"
-version = { workspace = true }
+version = "0.14.1"
 edition = "2024"
 
 [dependencies]
-jgenesis-common = { workspace = true }
-jgenesis-proc-macros = { workspace = true }
+jgenesis-common = { path = "../../common/jgenesis-common" }
+jgenesis-proc-macros = { path = "../../common/jgenesis-proc-macros" }
 
-bincode = { workspace = true, features = ["derive"] }
-log = { workspace = true }
+bincode = { version = "2", features = ["derive"] }
+log = { version = "0.4" }
 
-[lints]
-workspace = true

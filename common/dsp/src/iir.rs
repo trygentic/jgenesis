@@ -53,8 +53,12 @@ impl<const N: usize> IirFilter<N> {
         self.tiny_offset = -self.tiny_offset;
 
         let output = self.b0 * sample
-            + iter::zip(&self.b, &self.prev_samples).map(|(&coeff, &n)| coeff * n).sum::<f64>()
-            - iter::zip(&self.a, &self.prev_outputs).map(|(&coeff, &n)| coeff * n).sum::<f64>();
+            + iter::zip(&self.b, &self.prev_samples)
+                .map(|(&coeff, &n)| coeff * n)
+                .sum::<f64>()
+            - iter::zip(&self.a, &self.prev_outputs)
+                .map(|(&coeff, &n)| coeff * n)
+                .sum::<f64>();
 
         for i in (1..N).rev() {
             self.prev_samples[i] = self.prev_samples[i - 1];

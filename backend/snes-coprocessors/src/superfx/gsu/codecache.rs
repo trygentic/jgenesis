@@ -15,7 +15,10 @@ pub struct CodeCache {
 impl CodeCache {
     pub fn new() -> Self {
         Self {
-            ram: vec![0; CODE_CACHE_RAM_LEN].into_boxed_slice().try_into().unwrap(),
+            ram: vec![0; CODE_CACHE_RAM_LEN]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
             cbr: 0,
             cached_lines: 0,
         }
@@ -32,7 +35,9 @@ impl CodeCache {
     pub fn get(&self, address: u16) -> Option<u8> {
         let cache_addr = address.wrapping_sub(self.cbr);
         let cache_line_bit = (cache_addr >> 4) as u8;
-        self.cached_lines.bit(cache_line_bit).then_some(self.ram[cache_addr as usize])
+        self.cached_lines
+            .bit(cache_line_bit)
+            .then_some(self.ram[cache_addr as usize])
     }
 
     pub fn set(&mut self, address: u16, value: u8) {

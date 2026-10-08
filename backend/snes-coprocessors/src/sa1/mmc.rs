@@ -118,8 +118,11 @@ impl Sa1Mmc {
         self.bank_c_base_addr = u32::from(value & 0x07) << 20;
         self.bank_c_lorom_mapped = value.bit(7);
 
-        self.lorom_bank_c_addr =
-            if self.bank_c_lorom_mapped { self.bank_c_base_addr } else { DEFAULT_BANK_C_ADDR };
+        self.lorom_bank_c_addr = if self.bank_c_lorom_mapped {
+            self.bank_c_base_addr
+        } else {
+            DEFAULT_BANK_C_ADDR
+        };
 
         log::trace!("  MMC bank C base address: {:06X}", self.bank_c_base_addr);
         log::trace!("  MMC bank C LoROM mapped: {}", self.bank_c_lorom_mapped);
@@ -129,8 +132,11 @@ impl Sa1Mmc {
         self.bank_d_base_addr = u32::from(value & 0x07) << 20;
         self.bank_d_lorom_mapped = value.bit(7);
 
-        self.lorom_bank_d_addr =
-            if self.bank_d_lorom_mapped { self.bank_d_base_addr } else { DEFAULT_BANK_D_ADDR };
+        self.lorom_bank_d_addr = if self.bank_d_lorom_mapped {
+            self.bank_d_base_addr
+        } else {
+            DEFAULT_BANK_D_ADDR
+        };
 
         log::trace!("  MMC bank D base address: {:06X}", self.bank_d_base_addr);
         log::trace!("  MMC bank D LoROM mapped: {}", self.bank_d_lorom_mapped);
@@ -140,8 +146,11 @@ impl Sa1Mmc {
         self.bank_e_base_addr = u32::from(value & 0x07) << 20;
         self.bank_e_lorom_mapped = value.bit(7);
 
-        self.lorom_bank_e_addr =
-            if self.bank_e_lorom_mapped { self.bank_e_base_addr } else { DEFAULT_BANK_E_ADDR };
+        self.lorom_bank_e_addr = if self.bank_e_lorom_mapped {
+            self.bank_e_base_addr
+        } else {
+            DEFAULT_BANK_E_ADDR
+        };
 
         log::trace!("  MMC bank E base address: {:06X}", self.bank_e_base_addr);
         log::trace!("  MMC bank E LoROM mapped: {}", self.bank_e_lorom_mapped);
@@ -151,8 +160,11 @@ impl Sa1Mmc {
         self.bank_f_base_addr = u32::from(value & 0x07) << 20;
         self.bank_f_lorom_mapped = value.bit(7);
 
-        self.lorom_bank_f_addr =
-            if self.bank_f_lorom_mapped { self.bank_f_base_addr } else { DEFAULT_BANK_F_ADDR };
+        self.lorom_bank_f_addr = if self.bank_f_lorom_mapped {
+            self.bank_f_base_addr
+        } else {
+            DEFAULT_BANK_F_ADDR
+        };
 
         log::trace!("  MMC bank F base address: {:06X}", self.bank_f_base_addr);
         log::trace!("  MMC bank F LoROM mapped: {}", self.bank_f_lorom_mapped);
@@ -161,7 +173,10 @@ impl Sa1Mmc {
     pub fn write_bmaps(&mut self, value: u8) {
         self.snes_bwram_base_addr = u32::from(value & 0x1F) << 13;
 
-        log::trace!("  SNES BW-RAM base address: {:X}", self.snes_bwram_base_addr);
+        log::trace!(
+            "  SNES BW-RAM base address: {:X}",
+            self.snes_bwram_base_addr
+        );
     }
 
     pub fn write_bmap(&mut self, value: u8) {
@@ -175,7 +190,10 @@ impl Sa1Mmc {
     pub fn write_bbf(&mut self, value: u8) {
         self.bwram_bitmap_format = BwramBitmapBits::from_bit(value.bit(7));
 
-        log::trace!("  SA-1 BW-RAM bitmap format: {:?}", self.bwram_bitmap_format);
+        log::trace!(
+            "  SA-1 BW-RAM bitmap format: {:?}",
+            self.bwram_bitmap_format
+        );
     }
 }
 

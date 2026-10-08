@@ -238,9 +238,12 @@ impl SRtc {
     }
 
     fn update_day_of_week(&mut self) {
-        self.day_of_week =
-            timeutils::day_of_week(self.day, self.month, four_digit_year(self.year, self.century))
-                .to_srtc_u8();
+        self.day_of_week = timeutils::day_of_week(
+            self.day,
+            self.month,
+            four_digit_year(self.year, self.century),
+        )
+        .to_srtc_u8();
     }
 
     fn update_time(&mut self) {
