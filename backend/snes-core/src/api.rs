@@ -495,10 +495,22 @@ impl SnesEmulator {
         self.ppu.set_p2_tile_slots(mask, page1, page2);
     }
 
+    pub fn set_p2_tile_slots_4p(&mut self, mask: u128, page1: u128, page2: u128, page4: u128) {
+        self.ppu.set_p2_tile_slots_4p(mask, page1, page2, page4);
+    }
+
     /// The slots in `mask` are drawn with `palette` (a ninth sprite palette),
     /// from the next OAM upload, with the page. See `ppu::P2Tiles::pal`.
     pub fn set_p2_palette(&mut self, mask: u128, palette: [u16; 16]) {
         self.ppu.set_p2_palette(mask, palette);
+    }
+
+    pub fn set_p3_palette(&mut self, mask: u128, palette: [u16; 16]) {
+        self.ppu.set_p3_palette(mask, palette);
+    }
+
+    pub fn set_p4_palette(&mut self, mask: u128, palette: [u16; 16]) {
+        self.ppu.set_p4_palette(mask, palette);
     }
 
     /// The whole P2 page state (live and pending). Not in the bincode
