@@ -393,10 +393,10 @@ pub struct Ppu {
 /// row, tiles `$30-$3F`, wraps to row 0: `P2_PAGE_TILES` modulo).
 pub const P2_PAGE_WORDS: usize = 768;
 pub const P2_PAGE_TILES: u16 = 48;
-/// Four pages back to back: page 1 is for slots also set in `page1` (a second
+/// Six pages back to back: page 1 is for slots also set in `page1` (a second
 /// Zero, mmx-core's P1), page 2 for slots set in `page2` (the saber waves),
 /// page 3 for slots set in both (HUD icons).
-pub const P2_PAGES: usize = 4;
+pub const P2_PAGES: usize = 6;
 
 /// A sprite whose OAM slot bit is set in `slots` reads its tiles from `page`
 /// (index `(tile_number & 0x3F) % 48`) instead of VRAM. The host writes `next_*`;
@@ -415,6 +415,9 @@ pub struct P2Tiles {
     pub next_page1: u128,
     pub page2: u128,
     pub next_page2: u128,
+    /// Selects pages 4 and 5; `page1` chooses page 5 when this bit is set.
+    pub page4: u128,
+    pub next_page4: u128,
     /// Slots drawn with `palette` instead of their CGRAM sprite palette (the
     /// OAM palette bits still decide colour math): a ninth sprite palette for
     /// mmx-core's player 2, so it needs none of the game's eight.
@@ -422,10 +425,20 @@ pub struct P2Tiles {
     pub next_pal: u128,
     pub palette: [u16; 16],
     pub next_palette: [u16; 16],
+    pub pal3: u128,
+    pub next_pal3: u128,
+    pub palette3: [u16; 16],
+    pub next_palette3: [u16; 16],
+    pub pal4: u128,
+    pub next_pal4: u128,
+    pub palette4: [u16; 16],
+    pub next_palette4: [u16; 16],
 }
 
 /// `Pixel::palette` bit for a sprite pixel coloured from `P2Tiles::palette`.
 pub(crate) const EXTRA_PALETTE: u8 = 8;
+pub(crate) const EXTRA_PALETTE_3: u8 = 16;
+pub(crate) const EXTRA_PALETTE_4: u8 = 32;
 
 impl Default for P2Tiles {
     fn default() -> Self {
@@ -445,10 +458,20 @@ impl P2Tiles {
             next_page1: 0,
             page2: 0,
             next_page2: 0,
+            page4: 0,
+            next_page4: 0,
             pal: 0,
             next_pal: 0,
             palette: [0; 16],
             next_palette: [0; 16],
+            pal3: 0,
+            next_pal3: 0,
+            palette3: [0; 16],
+            next_palette3: [0; 16],
+            pal4: 0,
+            next_pal4: 0,
+            palette4: [0; 16],
+            next_palette4: [0; 16],
         }
     }
 
@@ -457,8 +480,13 @@ impl P2Tiles {
         self.slots = self.next_slots;
         self.page1 = self.next_page1;
         self.page2 = self.next_page2;
+        self.page4 = self.next_page4;
         self.pal = self.next_pal;
         self.palette = self.next_palette;
+        self.pal3 = self.next_pal3;
+        self.palette3 = self.next_palette3;
+        self.pal4 = self.next_pal4;
+        self.palette4 = self.next_palette4;
         self.pending = false;
     }
 }
@@ -1541,6 +1569,8 @@ impl Ppu {
                     let color = pixel_color(
                         &self.cgram,
                         &self.p2_tiles.0.palette,
+                        &self.p2_tiles.0.palette3,
+                        &self.p2_tiles.0.palette4,
                         layer,
                         mode,
                         self.registers.direct_color_mode_enabled,
@@ -1816,9 +1846,14 @@ impl Ppu {
     }
 
     pub fn set_p2_tile_slots(&mut self, mask: u128, page1: u128, page2: u128) {
+        self.set_p2_tile_slots_4p(mask, page1, page2, 0);
+    }
+
+    pub fn set_p2_tile_slots_4p(&mut self, mask: u128, page1: u128, page2: u128, page4: u128) {
         self.p2_tiles.0.next_slots = mask;
         self.p2_tiles.0.next_page1 = page1;
         self.p2_tiles.0.next_page2 = page2;
+        self.p2_tiles.0.next_page4 = page4;
         self.p2_tiles.0.pending = true;
     }
 
@@ -1830,6 +1865,18 @@ impl Ppu {
     pub fn set_p2_palette(&mut self, mask: u128, palette: [u16; 16]) {
         self.p2_tiles.0.next_pal = mask;
         self.p2_tiles.0.next_palette = palette;
+        self.p2_tiles.0.pending = true;
+    }
+
+    pub fn set_p3_palette(&mut self, mask: u128, palette: [u16; 16]) {
+        self.p2_tiles.0.next_pal3 = mask;
+        self.p2_tiles.0.next_palette3 = palette;
+        self.p2_tiles.0.pending = true;
+    }
+
+    pub fn set_p4_palette(&mut self, mask: u128, palette: [u16; 16]) {
+        self.p2_tiles.0.next_pal4 = mask;
+        self.p2_tiles.0.next_palette4 = palette;
         self.p2_tiles.0.pending = true;
     }
 
@@ -2435,11 +2482,19 @@ fn line_overlaps_sprite(sprite_y: u8, sprite_height: u16, scanline: u16) -> bool
 fn pixel_color(
     cgram: &Cgram,
     p2: &[u16; 16],
+    p3: &[u16; 16],
+    p4: &[u16; 16],
     layer: Layer,
     mode: BgMode,
     direct: bool,
     p: Pixel,
 ) -> u16 {
+    if layer == Layer::Obj && p.palette & EXTRA_PALETTE_4 != 0 {
+        return p4[usize::from(p.color & 15)];
+    }
+    if layer == Layer::Obj && p.palette & EXTRA_PALETTE_3 != 0 {
+        return p3[usize::from(p.color & 15)];
+    }
     if layer == Layer::Obj && p.palette & EXTRA_PALETTE != 0 {
         return p2[usize::from(p.color & 15)];
     }

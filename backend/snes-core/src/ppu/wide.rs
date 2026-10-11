@@ -425,6 +425,8 @@ impl Ppu {
                 color: pixel_color(
                     &self.cgram,
                     &self.p2_tiles.0.palette,
+                    &self.p2_tiles.0.palette3,
+                    &self.p2_tiles.0.palette4,
                     layer,
                     mode,
                     r.direct_color_mode_enabled,

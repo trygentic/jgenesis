@@ -334,8 +334,13 @@ impl Ppu {
             let oam_idx = self.sprites.scanned_oam_idxs[oam_buffer_idx as usize];
             // mmxrs patch: this sprite reads the P2 shadow page instead of VRAM
             let p2_page = (self.p2_tiles.0.slots >> oam_idx) & 1 != 0;
-            let p2_base = (((self.p2_tiles.0.page1 >> oam_idx) & 1)
-                | ((self.p2_tiles.0.page2 >> oam_idx) & 1) << 1) as usize
+            let page4 = (self.p2_tiles.0.page4 >> oam_idx) & 1;
+            let p2_base = if page4 != 0 {
+                (4 + ((self.p2_tiles.0.page1 >> oam_idx) & 1) as usize)
+            } else {
+                (((self.p2_tiles.0.page1 >> oam_idx) & 1)
+                    | ((self.p2_tiles.0.page2 >> oam_idx) & 1) << 1) as usize
+            }
                 * super::P2_PAGE_WORDS;
 
             let oam_low_addr = usize::from(oam_idx) << 1;
@@ -351,7 +356,9 @@ impl Ppu {
                 u16::from_le_bytes([tile_number_lsb, u8::from(attributes.bit(0))]);
             let palette = (attributes >> 1) & 0x07
                 // mmxrs patch: this slot is coloured from the P2 palette
-                | if (self.p2_tiles.0.pal >> oam_idx) & 1 != 0 { super::EXTRA_PALETTE } else { 0 };
+                | if (self.p2_tiles.0.pal >> oam_idx) & 1 != 0 { super::EXTRA_PALETTE } else { 0 }
+                | if (self.p2_tiles.0.pal3 >> oam_idx) & 1 != 0 { super::EXTRA_PALETTE_3 } else { 0 }
+                | if (self.p2_tiles.0.pal4 >> oam_idx) & 1 != 0 { super::EXTRA_PALETTE_4 } else { 0 };
             let priority = (attributes >> 4) & 0x03;
             let x_flip = attributes.bit(6);
             let y_flip = attributes.bit(7);
