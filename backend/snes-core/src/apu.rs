@@ -235,6 +235,16 @@ pub enum ApuTickEffect {
     OutputSample(f64, f64),
 }
 
+/// mmxrs perf: `SPC_TRACE` is `Some` (set through [`set_spc_trace`]); checked before
+/// the thread-local on every SPC700 clock.
+pub static SPC_TRACE_ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// mmxrs patch: start (`true`, a fresh trace) or stop recording SPC700 instruction starts.
+pub fn set_spc_trace(on: bool) {
+    SPC_TRACE.with(|t| *t.borrow_mut() = on.then(Vec::new));
+    SPC_TRACE_ON.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 thread_local! {
     /// mmxrs patch: when `Some`, every SPC700 instruction start as `(PC, SPC cycle)`.
     pub static SPC_TRACE: std::cell::RefCell<Option<Vec<(u16, u64)>>> = const { std::cell::RefCell::new(None) };
@@ -305,9 +315,9 @@ impl Apu {
 
         // mmxrs patch: the APU/CPU clock ratio is bsnes v0.87's (see BSNES_*); the CPU side
         // is counted at bsnes's CPU rate, so 24,607,104 APU clocks per 21,477,272 CPU clocks
-        let main_master_clock_frequency = self.bsnes_main_master_clock_frequency();
-        while self.master_cycles_product >= 24 * main_master_clock_frequency {
-            self.master_cycles_product -= 24 * main_master_clock_frequency;
+        let main_clock_x24 = 24 * self.bsnes_main_master_clock_frequency();
+        while self.master_cycles_product >= main_clock_x24 {
+            self.master_cycles_product -= main_clock_x24;
             self.clock();
 
             self.sample_divider -= 1;
@@ -329,6 +339,7 @@ impl Apu {
         self.registers.port_23_reset = false;
 
         // mmxrs patch: SPC700 instruction trace (debug: oracle comparison)
+        if SPC_TRACE_ON.load(std::sync::atomic::Ordering::Relaxed) {
         SPC_TRACE.with(|t| {
             if let Some(v) = t.borrow_mut().as_mut()
                 && !self.spc700.is_mid_instruction()
@@ -336,6 +347,7 @@ impl Apu {
                 v.push((self.spc700.registers().pc, SPC_CYCLES.get()));
             }
         });
+        }
         SPC_CYCLES.set(SPC_CYCLES.get() + 1);
 
         self.spc700.tick(&mut new_spc700_bus!(self));

@@ -1,7 +1,7 @@
 //! SNES public interface and main loop
 
 use crate::apu::{Apu, ApuTickEffect};
-pub use crate::apu::{SPC_CYCLES, SPC_TRACE}; // mmxrs patch: SPC700 trace (debug)
+pub use crate::apu::{set_spc_trace, SPC_CYCLES, SPC_TRACE}; // mmxrs patch: SPC700 trace (debug)
 use crate::audio::AudioResampler;
 use crate::bus::Bus;
 use crate::input::SnesInputs;
@@ -952,19 +952,25 @@ impl EmulatorTrait for SnesEmulator {
         }
 
         // mmxrs patch: minus the part of the cycle a CPU read of the APU ports already ran
+        let mut collected = false;
         if let Some((l, r)) = apu_pre.1 {
             self.audio_resampler.collect_sample(l, r);
+            collected = true;
         }
         if let ApuTickEffect::OutputSample(sample_l, sample_r) = self
             .apu
             .tick(master_cycles_elapsed - apu_pre.0.min(master_cycles_elapsed))
         {
             self.audio_resampler.collect_sample(sample_l, sample_r);
+            collected = true;
         }
 
-        self.audio_resampler
-            .output_samples(audio_output)
-            .map_err(SnesError::AudioOutput)?;
+        // mmxrs perf: the resampler only has output right after it took a sample in
+        if collected {
+            self.audio_resampler
+                .output_samples(audio_output)
+                .map_err(SnesError::AudioOutput)?;
+        }
 
         self.memory.tick(master_cycles_elapsed);
 

@@ -796,6 +796,15 @@ impl Cartridge {
         Ok(())
     }
 
+    /// mmxrs perf: whether [`Cartridge::tick`] does anything for this cartridge.
+    #[inline]
+    pub fn needs_tick(&self) -> bool {
+        matches!(
+            self,
+            Self::DspLoRom { .. } | Self::DspHiRom { .. } | Self::St01x { .. } | Self::Sa1(_) | Self::SuperFx(_) | Self::St018 { .. }
+        )
+    }
+
     pub fn tick(&mut self, master_cycles_elapsed: u64) {
         match self {
             Self::DspLoRom { upd77c25, .. }

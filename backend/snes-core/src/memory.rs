@@ -216,7 +216,10 @@ impl Memory {
     }
 
     pub fn tick(&mut self, master_cycles_elapsed: u64) {
-        self.cartridge.tick(master_cycles_elapsed);
+        // mmxrs perf: a plain LoROM/HiROM has nothing to tick (4% of the step was this call per cycle)
+        if self.cartridge.needs_tick() {
+            self.cartridge.tick(master_cycles_elapsed);
+        }
     }
 
     pub fn reset(&mut self) {
@@ -946,6 +949,12 @@ impl CpuInternalRegisters {
 
     fn update_irq_line(&mut self, ppu: &Ppu) {
         let ppu_htime = ppu.htime_for_irq();
+        // mmxrs perf: with H/V IRQs off the arm below is `false`; skip the closures.
+        if self.irq.mode == IrqMode::Off {
+            self.irq.last_ppu_htime = ppu_htime;
+            self.irq.line = false;
+            return;
+        }
         // mmxrs patch: an overclocked CPU cycle (3 master cycles) can stay
         // within one dot; then no H edge is crossed, as the checks below do.
 

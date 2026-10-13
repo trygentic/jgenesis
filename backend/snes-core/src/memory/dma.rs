@@ -120,13 +120,11 @@ impl DmaUnit {
         // HDMA begins at H=276, V in 0-224
         const START_SCANLINE_MCLK: u64 = 276 * 4;
 
-        if !Self::any_hdma_active(bus) {
-            return false;
-        }
-
+        // mmxrs perf: the window is true once per line; test it before scanning the channels.
         !bus.ppu.vblank_flag()
             && bus.ppu.scanline_master_cycles() >= START_SCANLINE_MCLK
             && last_scanline_mclk < START_SCANLINE_MCLK
+            && Self::any_hdma_active(bus)
     }
 
     fn hdma_channel_active(bus: &Bus<'_>, channel: usize) -> bool {
